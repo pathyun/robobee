@@ -1,4 +1,4 @@
-#include "drake/examples/robobee/robobee_plant.h"
+#include "drake/examples/robobee/robobee_plant_rpy.h"
 
 #include <memory>
 
@@ -43,7 +43,7 @@ Matrix3d default_moment_of_inertia() {
 
 template <typename T>
 RobobeePlant<T>::RobobeePlant()
-    : RobobeePlant(81.0,    // m (kg)
+    : RobobeePlant(81.0,    // m (mg)
                      default_moment_of_inertia() ) {}
 
 template <typename T>
@@ -112,30 +112,13 @@ void RobobeePlant<T>::DoCalcTimeDerivatives(
   // the Newtonian frame N (a.k.a the inertial or World frame).
   const Vector3<T> Fgravity_N(0, 0, -m_ * g_);
 
-  // Extract quaternion and their time-derivatives (quatDt).
+  // Extract roll-pitch-yaw angles (rpy) and their time-derivatives (rpyDt).
   VectorX<T> state = context.get_continuous_state_vector().CopyToVector();
-  // std::cout << "quaternion input: " << state.template segment<4>(3) <<"\n";
-  
-  // T time_t= context.get_time();
+  const drake::math::RollPitchYaw<T> rpy(state.template segment<3>(3));
+  const Vector3<T> rpyDt = state.template segment<3>(9);
 
-  // Convert to Eigen quaternion
-  Vector4<T> quat_vector = state.template segment<4>(3);
-  T temp = quat_vector(3);
-  quat_vector(3)=quat_vector(0);
-  quat_vector(0)=quat_vector(1);
-  quat_vector(1)=quat_vector(2);
-  quat_vector(2)=temp;
-
-  const Eigen::Quaternion<T> quat(quat_vector);
-  const Vector3<T> w_BN_B = state.template tail<3>();
-
-  // const Vector3<T> quatDt = state.template segment<3>(9);
-  // std::cout << "Segment indexing n,i ? :" << state.template segment<3>(9) << "\n";
-  // std::cout << "Segment tail :" << state.template tail<3>() << "\n";
-  // Convert rolltch-yaw (rpy) orientation to the R_NB rotation matrix.
-  // std::cout << "quaternion:" << quat_vector <<"\n";
-  const drake::math::RotationMatrix<T> R_NB(quat);
-  // std::cout << "R_NB: "<< R_NB.matrix() << "\n";
+  // Convert roll-pitch-yaw (rpy) orientation to the R_NB rotation matrix.
+  const drake::math::RotationMatrix<T> R_NB(rpy);
 
   // Calculate the net force on B, expressed in N.  Use Newton's law to
   // calculate a_NBcm_N (acceleration of B's center of mass, expressed in N).
@@ -143,42 +126,35 @@ void RobobeePlant<T>::DoCalcTimeDerivatives(
   const Vector3<T> xyzDDt = Fnet_N / m_;  // Equal to a_NBcm_N.
 
   // Use rpy and rpyDt to calculate B's angular velocity in N, expressed in B.
-  //const Vector3<T> w_BN_B = rpy.CalcAngularVelocityInChildFromRpyDt(rpyDt);
-  const Vector4<T> quatDt = drake::math::CalculateQuaternionDtFromAngularVelocityExpressedInB(quat, w_BN_B);
+  const Vector3<T> w_BN_B = rpy.CalcAngularVelocityInChildFromRpyDt(rpyDt);
 
   // To compute α (B's angular acceleration in N) due to the net moment 𝛕 on B,
   // rearrange Euler rigid body equation  𝛕 = I α + ω × (I ω)  and solve for α.
-
-
   const Vector3<T> wIw = w_BN_B.cross(I_ * w_BN_B);            // Expressed in B
   const Vector3<T> alpha_NB_B = I_.ldlt().solve(Tau_B - wIw);  // Expressed in B
-  // const Vector3<T> alpha_NB_N = R_NB * alpha_NB_B;             // Expressed in N
+  const Vector3<T> alpha_NB_N = R_NB * alpha_NB_B;             // Expressed in N
 
   // Calculate the 2nd time-derivative of rpy.
-  const Vector3<T> wDDt = alpha_NB_B;
-      // rpy.CalcRpyDDtFromRpyDtAndAngularAccelInParent(rpyDt, alpha_NB_N);
+  const Vector3<T> rpyDDt =
+      rpy.CalcRpyDDtFromRpyDtAndAngularAccelInParent(rpyDt, alpha_NB_N);
 
   // Recomposing the derivatives vector.
-  VectorX<T> xDt(13);
-  xDt << state.template segment<3>(7), quatDt, xyzDDt, wDDt;
+  VectorX<T> xDt(12);
+  xDt << state.template tail<6>(), xyzDDt, rpyDDt;
   derivatives->SetFromVector(xDt);
   //t << "\n";
   //std::cout << Faero_B(2) << "\n";
-  // std::cout << "=================================\n";
-  // std::cout << "state: "<< state << "\n";
-  // std::cout << "xDt: "<< xDt << "\n";
+  // std::cout << "Time : "<< context.get_time()<< "\n";
+  // // std::cout << "m, I:" << m_ << " and " << I_ << "\n";
 
-  // // Printing the state
-  // std::cout << "Time : "<< time_t<< "\n";
-  
   // std::cout << "Thrust to weight ratio : "<<Faero_B(2)/(-1*Fgravity_N(2)) << "\n";
 
   // std::cout << "z Position : "<< state(2) << "\n";
-  // std::cout << "Thrust (mN/s^2) : "<< Faero_B(2)*1 << "\n";
+  // std::cout << "Thrust (mN/s^2) : "<< Faero_B(2) << "\n";
   // std::cout << "Accellaration (cm/s^2) : "<< xyzDDt(2)*100 << "\n";
-  // // std::cout << "q (rad): "<< state(3) << "\n";
-  // // std::cout << "p (rad): "<< state(4) << "\n";
-  // // std::cout << "y (rad): "<< state(5) << "\n";
+  // std::cout << "r (rad): "<< state(3) << "\n";
+  // std::cout << "p (rad): "<< state(4) << "\n";
+  // std::cout << "y (rad): "<< state(5) << "\n";
   // std::cout << "Tau_x (mNmm): "<< u(1)*1000 << "\n";
   // std::cout << "Tau_y (mNmm): "<< u(2)*1000 << "\n";
   // std::cout << "Tau_z (mNmm): "<< u(3)*1000 << "\n";
@@ -197,9 +173,9 @@ std::unique_ptr<systems::AffineSystem<double>> StabilizingLQRController(
     Eigen::Vector3d nominal_position) {
   auto quad_context_goal = robobee_plant->CreateDefaultContext();
 
-  Eigen::VectorXd x0 = Eigen::VectorXd::Zero(13);
+  Eigen::VectorXd x0 = Eigen::VectorXd::Zero(12);
   x0.topRows(3) = nominal_position;
-  x0(3) =1;
+
 
   // Nominal input corresponds to a hover.
   Eigen::VectorXd u0 = Eigen::VectorXd::Zero(4);
@@ -212,8 +188,8 @@ std::unique_ptr<systems::AffineSystem<double>> StabilizingLQRController(
 
   // Setup LQR cost matrices (penalize position error 10x more than velocity
   // error).
-  Eigen::MatrixXd Q = 0.01*Eigen::MatrixXd::Identity(13, 13);
-  Q.topLeftCorner<3, 3>() = 100000 * Eigen::MatrixXd::Identity(3, 3);
+  Eigen::MatrixXd Q = 0.01*Eigen::MatrixXd::Identity(12, 12);
+  Q.topLeftCorner<6, 6>() = 100000 * Eigen::MatrixXd::Identity(6, 6);
   Q(2,2)=100000000000;
   std::cout << Q;
   Eigen::Matrix4d R = 100000*Eigen::Matrix4d::Identity();

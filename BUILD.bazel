@@ -29,6 +29,20 @@ drake_cc_library(
         "//util",
     ],
 )
+drake_cc_library(
+    name = "robobee_plant_rpy",
+    srcs = ["robobee_plant_rpy.cc"],
+    hdrs = ["robobee_plant_rpy.h"],
+    deps = [
+        "//common:default_scalars",
+        "//math:geometric_transform",
+        "//math:gradient",
+        "//systems/controllers:linear_quadratic_regulator",
+        "//systems/framework:leaf_system",
+        "//systems/primitives:affine_system",
+        "//util",
+    ],
+)
 
 drake_cc_binary(
     name = "run_quadrotor_dynamics",
@@ -80,6 +94,30 @@ drake_cc_binary(
     ],
 )
 
+drake_cc_binary(
+    name = "run_robobee_lqr_quaternion",
+    srcs = ["run_robobee_lqr_quaternion.cc"],
+    add_test_rule = 1,
+    data = [":models"],
+    test_rule_args = [
+        "-simulation_trials=2",
+        "-simulation_real_time_rate=0.0",
+    ],
+    deps = [
+        ":robobee_plant",
+        "//common:find_resource",
+        "//common:is_approx_equal_abstol",
+        "//lcm",
+        "//multibody:rigid_body_tree",
+        "//multibody:rigid_body_tree_construction",
+        "//multibody/parsers",
+        "//multibody/rigid_body_plant",
+        "//multibody/rigid_body_plant:drake_visualizer",
+        "//systems/analysis:simulator",
+        "//systems/framework:diagram",
+        "@gflags",
+    ],
+)
 
 drake_cc_binary(
     name = "run_robobee_traj_optimization",
@@ -89,6 +127,30 @@ drake_cc_binary(
     test_rule_args = ["-realtime_factor=0.0"],
     deps = [
         ":robobee_plant",
+        "//common:find_resource",
+        "//lcm",
+        "//multibody:rigid_body_tree",
+        "//multibody:rigid_body_tree_construction",
+        "//multibody/rigid_body_plant:rigid_body_plant",
+        "//multibody/joints",
+        "//multibody/parsers",
+        "//multibody/rigid_body_plant:drake_visualizer",
+        "//systems/analysis",
+        "//systems/controllers:linear_quadratic_regulator",
+        "//systems/primitives:trajectory_source",
+        "//systems/trajectory_optimization:direct_collocation",
+        "@gflags",
+    ],
+)
+
+drake_cc_binary(
+    name = "run_robobee_traj_optimization_rpy",
+    srcs = ["test/run_robobee_traj_optimization_rpy.cc"],
+    add_test_rule = 1,
+    data = [":models"],
+    test_rule_args = ["-realtime_factor=0.0"],
+    deps = [
+        ":robobee_plant_rpy",
         "//common:find_resource",
         "//lcm",
         "//multibody:rigid_body_tree",

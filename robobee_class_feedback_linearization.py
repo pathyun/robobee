@@ -1,6 +1,11 @@
 ##########################333
 #
-# Test script for LQR controller for robobee using pydr
+# Test script for feedback_linearizaiton
+# 
+#  Desired output y = [y_1; y_2]\in\mathbb{R}^4:
+#
+#  y_1 = w \in \mathbb{R}^3
+#  y_2 = z-zd \in \mathbb{R}
 #
 #
 ################################
@@ -23,11 +28,11 @@ from pydrake.all import (
     )
 
 # Make numpy printing prettier
-np.set_printoptions(precision=3, suppress=True)
+np.set_printoptions(precision=4, suppress=True)
 
 #-[0.0] Show figure flag
 
-show_flag_qd = 0;
+show_flag_qd = 1;
 show_flag_q=1;
 show_flag_control =1;
 
@@ -48,7 +53,7 @@ q0[1:4]=math.sin(theta0/2)*v0.T/v0_norm
 v0 = np.zeros((3))
 w0 = np.zeros((3))          # angular velocity
 w0[0]=-1;
-w0[1]=0;
+w0[1]=2;
 w0[2]=1;
 
 #-[0-1] Stack up the state in R^13
@@ -63,7 +68,7 @@ Iyy = 13.4*1e-3      # 13.4 mg m^2
 Izz = 4.5*1e-3       # 4.5  mg m^2
 g   = 9.80       # 9.8*10^2 m/s^2
 
-input_max = 1000  # N m  
+input_max = 10000000  # N m  
 robobee_plant = RobobeePlant(
     m = m, Ixx = Ixx, Iyy = Iyy, Izz = Izz, 
     g = g, input_max = input_max)
@@ -112,18 +117,7 @@ else:
 
 A, B =robobee_plant.GetLinearizedDynamics(uf, xf)
 
-print("A:", A, "B:", B)
-
-eval_A = np.linalg.eigvals(A)
-print("eval of A: ", eval_A[7])
-
-StabilizabilityMatrix = np.zeros((13,13+4))
-StabilizabilityMatrix[:,0:13]= -A
-StabilizabilityMatrix[:,13:17]= B
-rankStabilize = np.linalg.matrix_rank(StabilizabilityMatrix)
-print("\n Stabilizability rank: ", rankStabilize)
-
-
+# print("A:", A, "B:", B)
 
 Q = 1*np.eye(13)
 Q[0:3,0:3] = 10*np.eye(3)
@@ -131,22 +125,12 @@ Q[10:13,10:13] = 1*np.eye(3)
 
 R = np.eye(4)
 N = np.zeros((13,4))
+
 M_lqr = solve_continuous_are(A,B,Q,R)
 # print("M_lqr:", M_lqr)
 K_py = np.dot(np.dot(np.linalg.inv(R),B.T),M_lqr) 
 print("K_py",K_py)
 # print("K_py size:", K_py.shape)
-
-
-# Check the stability of feedback system using LQR control
-
-# FeedbackSystem = A-np.dot(B,K_py)
-
-# eval_FeedbackSystem = np.linalg.eigvals(FeedbackSystem)
-# print("eval_FeedbackSystem shape", eval_FeedbackSystem.shape)
-# print("eval of FeedbackSystem: ", eval_FeedbackSystem[7])
-
-
 
 
 K_, S_ = LinearQuadraticRegulator(A,B,Q,R)
@@ -169,7 +153,7 @@ print("\n Contrb rank: ", rankContrb)
 
 
 def test_controller(x):
-    # This should return a 1x1 u that is bounded
+    # This should return a 4x1 u that is bounded
     # between -input_max and input_max.
     # Remember to wrap the angular values back to
     # [-pi, pi].
@@ -179,16 +163,11 @@ def test_controller(x):
     u[0]=g+0.01
     u[1] =0;
     u[3]=-2
-    ''' 
-    Code submission for 3.3: fill in the code below
-    to use your computed LQR controller (i.e. gain matrix
-    K) to stabilize the robot by setting u appropriately.
-    '''
     
     return u
 
 def test_LQRcontroller(x):
-    # This should return a 1x1 u that is bounded
+    # This should return a 4x1 u that is bounded
     # between -input_max and input_max.
     # Remember to wrap the angular values back to
     # [-pi, pi].
@@ -209,6 +188,373 @@ def test_LQRcontroller(x):
     # print("\n####################33")
     return u 
 
+def test_Feedback_Linearization_controller(x):
+    # Output feedback linearization
+    # y1= z-zd
+    # y2= wx
+    # y3= wy
+    # y4= wz
+    #
+    # Analysis: The zero dynamics is unstable.
+    global g, xf, kp1, kp2, kp3
+
+    epsilonn= 1e-1
+    kp1=2/epsilonn
+    kp2=1/math.pow(epsilonn,2)
+    kp3=10
+
+    q=np.zeros(7)
+    qd=np.zeros(6)
+    q=x[0:7]
+    qd=x[7:13]
+    zd=xf[2]
+
+    # Four output
+        
+    y1=x[2]-zd
+    dy1=x[9]
+    y2=x[10]
+    y3=x[11]
+    y4=x[12]
+    # Augmented output
+    
+    eta1=np.hstack([y2,y3,y4])
+    eta2=y1
+    eta3=dy1
+
+    eta =np.hstack([eta2,eta3,eta1])
+
+
+    (Rq, Eq, wIw, I_inv)=robobee_plant.GetManipulatorDynamics(q, qd)
+
+
+    # A_fl(x)  : Decoupling matrix
+    A_fl = np.zeros((4,4))
+    A_fl[1:4,1:4] = I_inv
+    A_fl[0,0]=(math.pow(q[3],2)+math.pow(q[6],2)-math.pow(q[4],2)-math.pow(q[5],2))
+
+    A_fl_inv = np.linalg.inv(A_fl)
+    # print(A_fl_inv)
+    U_temp = np.zeros(4)
+    U_temp[0] = -g
+    U_temp[1:4]=-np.dot(I_inv,wIw)
+    mu1 = -kp1*eta3-kp2*eta2
+    mu2 = np.zeros(3)
+    mu2 = -kp3*eta1 
+    mu  = np.zeros(4)
+    mu[1:4] = mu2
+    mu[0] = mu1    
+    v=-U_temp+mu
+    U_fl = np.dot(A_fl_inv,v)
+
+    u = np.zeros(4)
+
+    u[0] = U_fl[0]
+    u[1:4] = U_fl[1:4]
+
+    # print("\n######################")
+    # print("qe3:", A_fl[3,3])
+    # print("u:", u)
+    # print("\n####################33")
+    return u 
+
+def test_Feedback_Linearization_controller2(x):
+    # Output feedback linearization 2
+    #
+    # y1= ||r-rf||^2/2
+    # y2= wx
+    # y3= wy
+    # y4= wz
+    #
+    # Analysis: The zero dynamics is unstable.
+    global g, xf, kp1, kp2, kp3
+
+    epsilonn= 1e-1
+    kp1=2/epsilonn
+    kp2=1/math.pow(epsilonn,2)
+    kp3=10
+
+    q=np.zeros(7)
+    qd=np.zeros(6)
+    q=x[0:7]
+    qd=x[7:13]
+    zd=xf[2]
+
+    # Four output
+        
+    y1=np.dot(x[0:3]-rf,x[0:3]-rf)/2
+    dy1=np.dot(x[0:3]-rf,x[7:10])
+    y2=x[10]
+    y3=x[11]
+    y4=x[12]
+    # Augmented output
+    
+    eta1=np.hstack([y2,y3,y4])
+    eta2=y1
+    eta3=dy1
+
+    eta =np.hstack([eta2,eta3,eta1])
+
+
+    (Rq, Eq, wIw, I_inv)=robobee_plant.GetManipulatorDynamics(q, qd)
+
+    e3=np.array([0,0,1]) # e3 elementary vector
+
+    # A_fl(x)  : Decoupling matrix
+    A_fl = np.zeros((4,4))
+    A_fl[1:4,1:4] = I_inv
+    A_fl[0,0]=np.dot(x[0:3]-rf,np.dot(Rq,e3))
+
+    A_fl_inv = np.linalg.inv(A_fl)
+    # print(A_fl_inv)
+    U_temp = np.zeros(4)
+    U_temp[0]  = -np.dot(x[0:3]-rf,e3)*g
+    U_temp[1:4]= -np.dot(I_inv,wIw)
+    print("x:", x)
+    mu1 = -kp1*eta3-kp2*eta2
+    mu2 = np.zeros(3)
+    mu2 = -kp3*eta1 
+    mu  = np.zeros(4)
+    mu[1:4] = mu2
+    mu[0] = mu1    
+    v=-U_temp+mu
+ 
+    U_fl = np.dot(A_fl_inv,v)
+
+    U_fl_zero = np.dot(A_fl_inv,-U_temp)
+
+    dx = robobee_plant.evaluate_f(U_fl_zero,x)
+    print("dx", dx)
+
+    u = np.zeros(4)
+
+    u[0] = U_fl[0]
+    u[1:4] = U_fl[1:4]
+
+    print("\n######################")
+    print("qe3:", A_fl[0,0])
+    print("u:", u)
+    print("\n####################33")
+    return u 
+
+def test_Feedback_Linearization_controller3(x):
+    # Output feedback linearization 3
+    #
+    # y1= ||r-rf||^2/2 + z-zf
+    # y2= wx
+    # y3= wy
+    # y4= wz
+    #
+    # Analysis: The zero dynamics is unstable.
+    global g, xf, kp1, kp2, kp3
+
+    epsilonn= 1e-1
+    kp1=2/epsilonn
+    kp2=1/math.pow(epsilonn,2)
+    kp3=10
+
+    q=np.zeros(7)
+    qd=np.zeros(6)
+    q=x[0:7]
+    qd=x[7:13]
+    zd=xf[2]
+
+    # Four output
+        
+    y1=np.dot(x[0:3]-rf,x[0:3]-rf)/2 + x[2]-zd
+    dy1=np.dot(x[0:3]-rf,x[7:10]) + x[9]
+    y2=x[10]
+    y3=x[11]
+    y4=x[12]
+    # Augmented output
+    
+    eta1=np.hstack([y2,y3,y4])
+    eta2=y1
+    eta3=dy1
+
+    eta =np.hstack([eta2,eta3,eta1])
+
+
+    (Rq, Eq, wIw, I_inv)=robobee_plant.GetManipulatorDynamics(q, qd)
+
+    e3=np.array([0,0,1]) # e3 elementary vector
+
+    # A_fl(x)  : Decoupling matrix
+    A_fl = np.zeros((4,4))
+    A_fl[1:4,1:4] = I_inv
+    A_fl[0,0]=np.dot(x[0:3]-rf,np.dot(Rq,e3))+np.dot(e3,np.dot(Rq,e3))
+
+    A_fl_inv = np.linalg.inv(A_fl)
+    # print(A_fl_inv)
+    U_temp = np.zeros(4)
+    U_temp[0]  = np.dot(x[7:10],x[7:10])-np.dot(x[0:3]-rf,e3)*g
+    U_temp[1:4]= -np.dot(I_inv,wIw)
+    print("x:", x)
+    mu1 = -kp1*eta3-kp2*eta2
+    mu2 = np.zeros(3)
+    mu2 = -kp3*eta1 
+    mu  = np.zeros(4)
+    mu[1:4] = mu2
+    mu[0] = mu1    
+    v=-U_temp+mu
+    U_fl = np.dot(A_fl_inv,v)
+
+    u = np.zeros(4)
+
+    u[0] = U_fl[0]
+    u[1:4] = U_fl[1:4]
+
+    print("\n######################")
+    print("qe3:", A_fl[0,0])
+    print("u:", u)
+    print("\n####################33")
+    return u     
+
+def test_Feedback_Linearization_controller4(x):
+    # Output feedback linearization 3
+    #
+    # y1= ||r-rf||^2/2 + ||v-vf||^2/2
+    # y2= wx
+    # y3= wy
+    # y4= wz
+    #
+    # Analysis: The zero dynamics is unstable.
+    global g, xf, kp1, kp2, kp3
+
+    epsilonn= 1e-1
+    kp1=2/epsilonn
+    kp2=1/math.pow(epsilonn,2)
+    kp3=10
+
+    q=np.zeros(7)
+    qd=np.zeros(6)
+    q=x[0:7]
+    qd=x[7:13]
+    zd=xf[2]
+
+    # Four output
+        
+    y1=np.dot(x[0:3]-rf,x[0:3]-rf)/2 + np.dot(x[7:10],x[7:10])/2
+    y2=x[10]
+    y3=x[11]
+    y4=x[12]
+    # Augmented output
+    
+    eta1=np.hstack([y2,y3,y4])
+    eta2=y1
+    # eta3=dy1
+
+    # eta =np.hstack([eta2,eta3,eta1])
+
+
+    (Rq, Eq, wIw, I_inv)=robobee_plant.GetManipulatorDynamics(q, qd)
+
+    e3=np.array([0,0,1]) # e3 elementary vector
+
+    # A_fl(x)  : Decoupling matrix
+    A_fl = np.zeros((4,4))
+    A_fl[1:4,1:4] = I_inv
+    A_fl[0,0]=np.dot(x[7:10],np.dot(Rq,e3))
+
+    A_fl_inv = np.linalg.inv(A_fl)
+    # print(A_fl_inv)
+    U_temp = np.zeros(4)
+    U_temp[0]  = np.dot(x[0:3]-rf,x[7:10])-np.dot(x[7:10],e3)*g
+    U_temp[1:4]= -np.dot(I_inv,wIw)
+    print("x:", x)
+    mu1 = kp2*eta2
+    mu2 = np.zeros(3)
+    mu2 = -kp3*eta1 
+    mu  = np.zeros(4)
+    mu[1:4] = mu2
+    mu[0] = mu1    
+    v=-U_temp+mu
+    U_fl = np.dot(A_fl_inv,v)
+
+    u = np.zeros(4)
+
+    u[0] = U_fl[0]
+    u[1:4] = U_fl[1:4]
+
+    print("\n######################")
+    print("qe3:", A_fl[0,0])
+    print("u:", u)
+    print("\n####################33")
+    return u  
+
+def test_Feedback_Linearization_controller5(x):
+    # Output feedback linearization 5
+    # 
+    # Remark: Different from FLc1 s.t. feedback linearize each domain.
+    # 
+    # y1= z-zd
+    # y2= wx
+    # y3= wy
+    # y4= wz
+    #
+    # Analysis: The zero dynamics is unstable.
+    global g, xf, kp1, kp2, kp3
+
+    epsilonn= 1e-1
+    kp1=2/epsilonn
+    kp2=1/math.pow(epsilonn,2)
+    kp3=10
+
+    q=np.zeros(7)
+    qd=np.zeros(6)
+    q=x[0:7]
+    qd=x[7:13]
+    zd=xf[2]
+
+    # Four output
+        
+    y1=x[2]-zd
+    y2=x[10]
+    y3=x[11]
+    y4=x[12]
+    # Augmented output
+    
+    eta1=np.hstack([y2,y3,y4])
+    eta2=y1
+    eta3=dy1
+
+    eta =np.hstack([eta2,eta3,eta1])
+
+
+    (Rq, Eq, wIw, I_inv)=robobee_plant.GetManipulatorDynamics(q, qd)
+
+    e3=np.array([0,0,1]) # e3 elementary vector
+
+    # A_fl(x)  : Decoupling matrix
+    A_fl = np.zeros((4,4))
+    A_fl[1:4,1:4] = I_inv
+    A_fl[0,0]=np.dot(e3,dot(Rq,e3))
+
+    A_fl_inv = np.linalg.inv(A_fl)
+    # print(A_fl_inv)
+    U_temp = np.zeros(4)
+    U_temp[0]  = np.dot(x[0:3]-rf,x[7:10])-np.dot(x[7:10],e3)*g
+    U_temp[1:4]= -np.dot(I_inv,wIw)
+    print("x:", x)
+    mu1 = kp2*eta2
+    mu2 = np.zeros(3)
+    mu2 = -kp3*eta1 
+    mu  = np.zeros(4)
+    mu[1:4] = mu2
+    mu[0] = mu1    
+    v=-U_temp+mu
+    U_fl = np.dot(A_fl_inv,v)
+
+    u = np.zeros(4)
+
+    u[0] = U_fl[0]
+    u[1:4] = U_fl[1:4]
+
+    print("\n######################")
+    print("qe3:", A_fl[0,0])
+    print("u:", u)
+    print("\n####################33")
+    return u         
 # Test LQR
 
 
@@ -217,7 +563,7 @@ duration =5.
 
 input_log, state_log = \
     RunSimulation(robobee_plant,
-              test_LQRcontroller,
+              test_Feedback_Linearization_controller2,
               x0=x0,
               duration=duration)
 
@@ -244,8 +590,9 @@ for j in range(0,num_iteration):
 
 # Visualize state and input traces
 # print("times",state_log.data()[1,:])RollPitchYaw
-plt.clf()
+
 if show_flag_q==1:
+    plt.clf()
     fig = plt.figure(1).set_size_inches(6, 6)
     for i in range(0,3):
         # print("i:%d" %i)
@@ -352,5 +699,6 @@ if show_flag_control==1:
 # plt.plot(input_log.sample_times(), input_log.data()[0, :])
 # plt.ylabel("u[0]")
 # plt.xlabel("t")
+
 plt.grid(True)
 plt.show()

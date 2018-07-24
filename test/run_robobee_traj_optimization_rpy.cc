@@ -10,7 +10,7 @@
 #include <gflags/gflags.h>
 
 #include "drake/common/find_resource.h"
-#include "drake/examples/robobee/robobee_plant.h"
+#include "drake/examples/robobee/robobee_plant_rpy.h" // Load RobobeePlan with Roll Pitch Yaw 12 state
 #include "drake/lcm/drake_lcm.h"
 #include "drake/multibody/joints/floating_base_types.h"
 #include "drake/multibody/parsers/urdf_parser.h"
@@ -41,11 +41,13 @@ DEFINE_double(realtime_factor, 1.0,
 int do_main() {
   systems::DiagramBuilder<double> builder;
 
-  // auto robobee = builder.AddSystem<RobobeePlant<double>>();
-  // robobee->set_name("robobee");
   RobobeePlant<double> robobee;
   auto context = robobee.CreateDefaultContext();
 
+ 
+  // auto robobee = builder.AddSystem<RobobeePlant<double>>();
+  // robobee->set_name("robobee");
+  // //RobobeePlant<double> robobee;
   // auto context = robobee->CreateDefaultContext();
 
   const int kNumTimeSamples = 20;
@@ -68,7 +70,7 @@ int do_main() {
   // dircol.AddConstraintToAllKnotPoints(u(0) <= kTorqueLimit);
 
 // [0] Initial configuration in SE(3)
-  Eigen::VectorXd x0=Eigen::VectorXd::Zero(13);
+  Eigen::VectorXd x0=Eigen::VectorXd::Zero(12);
 
   // Position r
   x0(0) = 0.;
@@ -76,42 +78,28 @@ int do_main() {
   x0(2) = 0.;
 
   // Orientation q (quaternion)
-  double theta0 = M_PI/4;  // angle of otation
-  Eigen::Vector3d v0_q=Eigen::Vector3d:: Zero(3); 
-  v0_q(0) = 1.;
-  v0_q(1) = 0.;
-  v0_q(2) = 1.;
+  Eigen::Vector3d rpy0=Eigen::Vector3d:: Zero(3); 
+  rpy0(0) = 1.;
+  rpy0(1) = 0.;
+  rpy0(2) = 1.;
   
-  Eigen::VectorXd q = Eigen::VectorXd::Zero(4);
-  q(0)= cos(theta0/2);
-  double v0_norm; 
-  v0_norm = sqrt(v0_q.transpose()*v0_q);
-
-  Eigen::VectorXd v0_normalized = Eigen::VectorXd::Zero(3);
-  v0_normalized = v0_q/v0_norm;
-
-  q(1)= sin(theta0/2)*v0_normalized(0);
-  q(2)= sin(theta0/2)*v0_normalized(1);
-  q(3)= sin(theta0/2)*v0_normalized(2);
-
-  x0(3) =q(0);
-  x0(4) =q(1);
-  x0(5) =q(2);
-  x0(6) =q(3);
-
+  x0(3) =rpy0(0);
+  x0(4) =rpy0(1);
+  x0(5) =rpy0(2);
+  
   // Angular velocity w
   Eigen::Vector3d w0 = Eigen::Vector3d::Zero(3);
   w0(0)= -0.1;
   w0(1)=  0.;
   w0(2)=  0.1 ;
   
-  x0(10)=w0(0); // w1=1;
-  x0(11)=w0(1);// w2=1;
-  x0(12)=w0(2);// w3=1;
+  x0(9)=w0(0); // w1=1;
+  x0(10)=w0(1);// w2=1;
+  x0(11)=w0(2);// w3=1;
   std::cout << "Intial condition x0:" << x0 <<"\n";
 
 // [1] Final configuration in SE(3)
-  Eigen::VectorXd xf=Eigen::VectorXd::Zero(13);
+  Eigen::VectorXd xf=Eigen::VectorXd::Zero(12);
   
   // Position r
   xf(0) = 0.;
@@ -119,29 +107,14 @@ int do_main() {
   xf(2) = 0.3;
 
   // Orientation q (quaternion)
-  double thetaf = M_PI/1;  // angle of otation
-  Eigen::Vector3d vf_q=Eigen::Vector3d:: Zero(3); 
-  vf_q(0) = 1.;
-  vf_q(1) = 0.;
-  vf_q(2) = -0.;
+  Eigen::Vector3d rpyf=Eigen::Vector3d:: Zero(3); 
+  rpyf(0) = 0.;
+  rpyf(1) = 0.;
+  rpyf(2) = 1.;
   
-  Eigen::VectorXd qf = Eigen::VectorXd::Zero(4);
-  qf(0)= cos(thetaf/2);
-  double vf_norm; 
-  vf_norm = sqrt(vf_q.transpose()*vf_q);
-
-  Eigen::VectorXd vf_normalized = Eigen::VectorXd::Zero(3);
-  vf_normalized = vf_q/vf_norm;
-
-  qf(1)= sin(thetaf/2)*vf_normalized(0);
-  qf(2)= sin(thetaf/2)*vf_normalized(1);
-  qf(3)= sin(thetaf/2)*vf_normalized(2);
-  // std::cout << "qf:" << qf <<"\n";
-
-  xf(3) =qf(0);
-  xf(4) =qf(1);
-  xf(5) =qf(2);
-  xf(6) =qf(3);
+  xf(3) =rpyf(0);
+  xf(4) =rpyf(1);
+  xf(5) =rpyf(2);
 
   // Angular velocity w
   Eigen::Vector3d wf = Eigen::Vector3d::Zero(3);
@@ -149,9 +122,9 @@ int do_main() {
   wf(1)=  0.;
   wf(2)=  0. ;
   
-  xf(10)=wf(0); // w1=1;
-  xf(11)=wf(1);// w2=1;
-  xf(12)=wf(2);// w3=1;
+  xf(9)=wf(0); // w1=1;
+  xf(10)=wf(1);// w2=1;
+  xf(11)=wf(2);// w3=1;
 
 
   std::cout << "Final condition xf:" << xf <<"\n";
@@ -192,7 +165,7 @@ int do_main() {
   auto tree = std::make_unique<RigidBodyTree<double>>();
   parsers::urdf::AddModelInstanceFromUrdfFileToWorld(
       FindResourceOrThrow("drake/examples/robobee/robobee.urdf"),
-      multibody::joints::kQuaternion, tree.get());
+      multibody::joints::kRollPitchYaw, tree.get());
   
   auto publisher = builder.AddSystem<systems::DrakeVisualizer>(*tree, &lcm);
 
@@ -201,8 +174,11 @@ int do_main() {
   // playback, there is no continuous state and the integrator does not even get
   // called. Therefore, we explicitly set the publish frequency for the
   // visualizer.
-  
-  publisher->set_publish_period(1.0 / 12000.0);
+
+  std::cout << state_source->get_output_port().size() << std::endl;
+  std::cout << publisher->get_input_port(0).size() << std::endl;
+
+  publisher->set_publish_period(1.0 / 60.0);
 
   builder.Connect(state_source->get_output_port(),
                   publisher->get_input_port(0));
@@ -213,11 +189,11 @@ int do_main() {
 
   simulator.set_target_realtime_rate(FLAGS_realtime_factor);
   simulator.Initialize();
-  simulator.StepTo(pp_xtraj.end_time());
+  // simulator.StepTo(pp_xtraj.end_time());
 
   std::cout << "Ending time: "<< pp_xtraj.end_time() << "\n";
 
-  Eigen::VectorXd pp_temp = pp_xtraj.value(pp_xtraj.end_time());
+  Eigen::VectorXd pp_temp = pp_xtraj.value(0.2);
   std::cout << "pp_xtraj: " << pp_temp <<"\n";
 
 

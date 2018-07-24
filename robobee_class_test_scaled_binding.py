@@ -1,6 +1,6 @@
 ##########################333
 #
-# Test script for LQR controller for robobee using pydr
+# Test script for LQR controller for robobee using pydrake binding with quaternion
 #
 #
 ################################
@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.linalg import solve_continuous_are
 
-from robobee_plant_example import *
+# from robobee_plant_example import *
 
 from pydrake.all import (
     DiagramBuilder,
@@ -19,8 +19,19 @@ from pydrake.all import (
     RotationMatrix,
     Quaternion,
     LinearQuadraticRegulator,
-    RollPitchYaw
+    RollPitchYaw,
+    DrakeLcm,
+    DrakeVisualizer, FloatingBaseType,
+    RigidBodyPlant, RigidBodyTree
     )
+
+from pydrake.common import FindResourceOrThrow
+
+from robobee_plant_example import RobobeePlant as RP_py
+from robobee_plant_example import RobobeeController
+
+from pydrake.examples.robobee import RobobeePlant
+
 
 # Make numpy printing prettier
 np.set_printoptions(precision=3, suppress=True)
@@ -63,8 +74,16 @@ Iyy = 13.4*1e-3      # 13.4 mg m^2
 Izz = 4.5*1e-3       # 4.5  mg m^2
 g   = 9.80       # 9.8*10^2 m/s^2
 
+I = np.zeros((3,3));
+I[0,0]=Ixx;
+I[1,1]=Iyy;
+I[2,2]=Izz;
+
 input_max = 1000  # N m  
-robobee_plant = RobobeePlant(
+
+
+
+robobee_plant = RP_py(
     m = m, Ixx = Ixx, Iyy = Iyy, Izz = Izz, 
     g = g, input_max = input_max)
 
@@ -215,11 +234,63 @@ def test_LQRcontroller(x):
 # Run forward simulation from the specified initial condition
 duration =5.
 
-input_log, state_log = \
-    RunSimulation(robobee_plant,
-              test_LQRcontroller,
-              x0=x0,
-              duration=duration)
+robobeeplant = RobobeePlant(m, I)
+
+
+robobee_controller = RobobeeController(test_LQRcontroller)
+
+# Create a simple block diagram containing the plant in feedback
+# with the controller.
+builder = DiagramBuilder()
+# The last pendulum plant we made is now owned by a deleted
+# system, so easiest path is for us to make a new one.
+plant = builder.AddSystem(robobeeplant)
+
+controller = builder.AddSystem(robobee_controller)
+builder.Connect(plant.get_output_port(0), controller.get_input_port(0))
+builder.Connect(controller.get_output_port(0), plant.get_input_port(0))
+
+# Create a logger to capture the simulation of our plant
+input_log = builder.AddSystem(SignalLogger(4))
+input_log._DeclarePeriodicPublish(0.033333, 0.0)
+builder.Connect(controller.get_output_port(0), input_log.get_input_port(0))
+
+state_log = builder.AddSystem(SignalLogger(13))
+state_log._DeclarePeriodicPublish(0.033333, 0.0)
+builder.Connect(plant.get_output_port(0), state_log.get_input_port(0))
+    
+# Drake visualization
+rtree = RigidBodyTree(FindResourceOrThrow("drake/examples/robobee/robobee.urdf"), FloatingBaseType.kQuaternion)
+lcm = DrakeLcm()
+visualizer = builder.AddSystem(DrakeVisualizer(tree=rtree,
+   lcm=lcm, enable_playback=True))
+builder.Connect(plant.get_output_port(0), visualizer.get_input_port(0))
+    
+
+diagram = builder.Build()
+
+# Set the initial conditions for the simulation.
+context = diagram.CreateDefaultContext()
+state = context.get_mutable_continuous_state_vector()
+state.SetFromVector(x0)
+
+# Create the simulator.
+
+simulator = Simulator(diagram, context)
+simulator.Initialize()
+# simulator.set_publish_every_time_step(Falspe)
+
+simulator.set_target_realtime_rate(1)
+simulator.get_integrator().set_fixed_step_mode(False)
+simulator.get_integrator().set_maximum_step_size(0.005)
+
+# Simulate for the requested duration.
+simulator.StepTo(duration)
+# input_log, state_log = \
+#     RunSimulation(robobee_plant,
+#               test_LQRcontroller,
+#               x0=x0,
+#               duration=duration)
 
 
 

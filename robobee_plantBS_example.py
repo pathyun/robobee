@@ -13,20 +13,21 @@ from pydrake.all import (
     RigidBodyPlant, RigidBodyTree,
     )
 from pydrake.common import FindResourceOrThrow
-
-# Define a system to calculate the continuous dynamics
-# of the robobee (four actuator)
-# 
+# Based on RobobeePlant
+# Backstepping input
+# \dot{\Xi}_1 = \Xi_2
+# \dot{\Xi}_2 = u
 # This class takes as input the physical description
 # of the system, in terms of the center of mass intertia matrix, and gravity
-class RobobeePlant(VectorSystem):
+
+class RobobeePlantBS(VectorSystem):
     def __init__(self, m = 1., Ixx = 1., 
                        Iyy = 2., Izz = 3., g = 10.,
                         input_max = 10.):
         VectorSystem.__init__(self,
             4,                           # One input (torque at reaction wheel).
-            13)                           # Four outputs (theta, phi, dtheta, dphi)
-        self._DeclareContinuousState(13)  # Four states (theta, phi, dtheta, dphi).
+            15)                           # Four outputs (theta, phi, dtheta, dphi)
+        self._DeclareContinuousState(15)  # Four states (theta, phi, dtheta, dphi).
 
         self.m = float(m)
         self.Ixx = float(Ixx)
@@ -55,6 +56,7 @@ class RobobeePlant(VectorSystem):
         q1= q[4]
         q2= q[5]
         q3= q[6]
+        xi1 = q[7]
 
         vx= qd[0]   # CoM velocity in inertial frame
         vy= qd[1]
@@ -62,7 +64,8 @@ class RobobeePlant(VectorSystem):
         wx= qd[3]   # Body velocity in "body frame"
         wy= qd[4]
         wz= qd[5]
-        
+        xi2=qd[6]
+
         # Stack up the state q
         x = np.hstack([q, qd])
         # print("x:",x)
@@ -119,36 +122,38 @@ class RobobeePlant(VectorSystem):
             u[0] = max(-self.input_max, min(self.input_max, u[0]))
 
         # Use the manipulator equation to get qdd.
-        qq = x[0:7]
-        qqd = x[7:13]
+        qq = x[0:8]
+        qqd = x[8:15]
         (Rq, Eq, wIw, I_inv) = self.GetManipulatorDynamics(qq, qqd)
         
         e3 = np.array([0,0,1])
         # print("e3,", e3.shape)
         
-        # Awkward slice required on tauG to get shapes to agree --
-        # numpy likes to collapse the other dot products in this expression
+        # Awkward slice required on tauG to get shapes to agree --        # numpy likes to collapse the other dot products in this expression
         # to vectors.
+        # epsilonn = 0.01 # Error pe
         rd = qqd[0:3] # np.vstack([qd[0],qd[1],qd[2]]); 
         qd = np.dot(Eq.T,qqd[3:6])/2.   # \dot{quat}=1/2*E(q)^Tw
-        vd = np.dot((Rq*u[0]-self.g*np.eye(3)),e3) # \dot{v} = -ge3 +R(q)e3 u[0] : u[0] Thrust is a unit of acceleration
+        xi1d = qqd[6]
+        vd = np.dot((Rq*qq[7]-self.g*np.eye(3)),e3) # \dot{v} = -ge3 +R(q)e3 u[0] : u[0] Thrust is a unit of acceleration
         wd = -np.dot(I_inv,wIw)+np.dot(I_inv,u[1:4])
+        xi2d = u[0]
         # print("Rq", Rq.shape, "u", u.shape)
         # print("rd",rd.shape, "qd", qd.shape, "vd", vd.shape, "wd",wd.shape)
 
         # print("Eq:",Eq.T)
         # print("qqd:", qqd)
         # print("qd:",qd)
-
+        # print("vd:", vd)
         # print("w:",qqd[3:6])
-        return np.hstack([rd, qd, vd, wd])
+        return np.hstack([rd, qd, xi1d, vd, wd, xi2d])
 
 
     # This method calculates the time derivative of the state,
     # which allows the system to be simulated forward in time.
     def _DoCalcVectorTimeDerivatives(self, context, u, x, xdot):
-        q = x[0:7]
-        qd = x[7:13]
+        q = x[0:8]
+        qd = x[8:15]
         xdot[:] = self.evaluate_f(u, x, throw_when_limits_exceeded=True)
 
     # This method calculates the output of the system
@@ -183,13 +188,15 @@ class RobobeePlant(VectorSystem):
         q1= x_f[4]
         q2= x_f[5]
         q3= x_f[6]
+        xi1=x_f[7]
         # print("xf:", x_f)
-        vx= x_f[7]   # CoM velocity in inertial frame
-        vy= x_f[8]
-        vz= x_f[9]
-        wx= x_f[10]   # Body velocity in "body frame"
-        wy= x_f[11]
-        wz= x_f[12]
+        vx= x_f[8]   # CoM velocity in inertial frame
+        vy= x_f[9]
+        vz= x_f[10]
+        wx= x_f[11]   # Body velocity in "body frame"
+        wy= x_f[12]
+        wz= x_f[13]
+        xi2=x_f[14]
 
         F_T_f = u_f[0]
         tau_f = u_f[1:4]
@@ -203,8 +210,8 @@ class RobobeePlant(VectorSystem):
         I_inv[2,2] = 1/self.Izz
         
 
-        Jac_f_x = np.zeros((13,13))
-        Jac_f_u = np.zeros((13,4))
+        Jac_f_x = np.zeros((15,15))
+        Jac_f_u = np.zeros((15,4))
 
         W_1 = np.array([[0, -wx, -wy, -wz],
                         [wx,  0, -wz,  wy],
@@ -229,24 +236,30 @@ class RobobeePlant(VectorSystem):
         
         # Jacobian over q
         Jac_f_x[3:7,3:7]=W_1
-        Jac_f_x[7:10,3:7]=2*F1*F_T_f
+        Jac_f_x[8:11,3:7]=2*F1*F_T_f
 
+        # Jacobian over xi1
+        Jac_f_x[8,7]=2*q3*q1 + 2*q0*q2
+        Jac_f_x[9,7]=2*q3*q2 - 2*q0*q1
+        Jac_f_x[10,7]=q0*q0   + q3*q3   -q1*q1  -q2*q2
         # Jacobian over v
-        Jac_f_x[0:3,7:10]=np.eye(3)
+        Jac_f_x[0:3,8:11]=np.eye(3)
         
         # Jacobian over w
-        Jac_f_x[3:7,10:13]=Eq.T/2
+        Jac_f_x[3:7,11:14]=Eq.T/2
         # print("Eq.T",Eq.T)
         # print("Eq.T/2",Eq.T/2)
         
-        Jac_f_x[10:13,10:13]=W_2
+        Jac_f_x[11:14,11:14]=W_2
+
+        # Jacobian over xi2
+
+        Jac_f_x[7,14] = 1
     
         # Jacobian over u
-        Jac_f_u[7,0]=2*q3*q1 + 2*q0*q2
-        Jac_f_u[8,0]=2*q3*q2 - 2*q0*q1
-        Jac_f_u[9,0]=q0*q0   + q3*q3   -q1*q1  -q2*q2
+        Jac_f_u[14,0]= 1
         # print("Jac_f_u:", Jac_f_u)
-        Jac_f_u[10:13,1:4] = I_inv
+        Jac_f_u[11:14,1:4] = I_inv
         
         A = Jac_f_x
         B = Jac_f_u
@@ -260,7 +273,7 @@ class RobobeeController(VectorSystem):
 
     def __init__(self, feedback_rule):
         VectorSystem.__init__(self,
-            13,                           # Four inputs: full state inertial wheel pendulum..
+            15,                           # Four inputs: full state inertial wheel pendulum..
             4)                           # One output (torque for reaction wheel).
         self.feedback_rule = feedback_rule
 
@@ -269,10 +282,37 @@ class RobobeeController(VectorSystem):
     def _DoCalcVectorOutput(self, context, u, x, y):
         # Remember that the input "u" of the controller is the
         # state of the plant
-        y[:] = self.feedback_rule(u)
+        time_t = context.get_time()
+        print("time_t:", time_t)
 
+        y[:] = self.feedback_rule(u,time_t)
+        # Hybrid switching controller
+        # if time_t<2:
+        #     y[:] = self.feedback_rule(u,time_t)
+        # elif time_t>2 and time_t<2.2:
+        #     y[:] = np.zeros(4);
+        # else:
+        #     y[:] = self.feedback_rule(u,time_t)
 
-def RunSimulation(robobee_plant, control_law, x0=np.random.random((13, 1)), duration=30):
+class RigidBodySelection(VectorSystem):
+    ''' System to control the robobee. Must be handed
+    a function with signature:
+        u = f(t, x)
+    that computes control inputs for the pendulum. '''
+
+    def __init__(self):
+        VectorSystem.__init__(self,
+            15,                           # Four inputs: full state inertial wheel pendulum..
+            13)                           # One output (torque for reaction wheel).
+        
+    # This method calculates the output of the system from the
+    # input by applying the supplied feedback rule.
+    def _DoCalcVectorOutput(self, context, u, x, y):
+        # Remember that the input "u" of the controller is the
+        # state of the plant
+        y[:] = np.hstack([u[0:7],u[8:14]])
+
+def RunSimulation(robobee_plantBS, control_law, x0=np.random.random((15, 1)), duration=30):
     robobee_controller = RobobeeController(control_law)
 
     # Create a simple block diagram containing the plant in feedback
@@ -280,35 +320,45 @@ def RunSimulation(robobee_plant, control_law, x0=np.random.random((13, 1)), dura
     builder = DiagramBuilder()
     # The last pendulum plant we made is now owned by a deleted
     # system, so easiest path is for us to make a new one.
-    plant = builder.AddSystem(RobobeePlant(
-        m = robobee_plant.m,
-        Ixx = robobee_plant.Ixx, 
-        Iyy = robobee_plant.Iyy, 
-        Izz = robobee_plant.Izz, 
-        g = robobee_plant.g, 
-        input_max = robobee_plant.input_max))
+    plant = builder.AddSystem(RobobeePlantBS(
+        m = robobee_plantBS.m,
+        Ixx = robobee_plantBS.Ixx, 
+        Iyy = robobee_plantBS.Iyy, 
+        Izz = robobee_plantBS.Izz, 
+        g = robobee_plantBS.g, 
+        input_max = robobee_plantBS.input_max))
 
+    Rigidbody_selector = builder.AddSystem(RigidBodySelection())
+
+    print("1. Connecting plant and controller\n")
     controller = builder.AddSystem(robobee_controller)
     builder.Connect(plant.get_output_port(0), controller.get_input_port(0))
     builder.Connect(controller.get_output_port(0), plant.get_input_port(0))
 
     # Create a logger to capture the simulation of our plant
+    print("2. Connecting plant to the logger\n")
+    
     input_log = builder.AddSystem(SignalLogger(4))
     input_log._DeclarePeriodicPublish(0.033333, 0.0)
     builder.Connect(controller.get_output_port(0), input_log.get_input_port(0))
 
-    state_log = builder.AddSystem(SignalLogger(13))
+    state_log = builder.AddSystem(SignalLogger(15))
     state_log._DeclarePeriodicPublish(0.033333, 0.0)
     builder.Connect(plant.get_output_port(0), state_log.get_input_port(0))
     
     # Drake visualization
+    print("3. Connecting plant output to DrakeVisualizer\n")
+    
     rtree = RigidBodyTree(FindResourceOrThrow("drake/examples/robobee/robobee.urdf"), FloatingBaseType.kQuaternion)
     lcm = DrakeLcm()
     visualizer = builder.AddSystem(DrakeVisualizer(tree=rtree,
        lcm=lcm, enable_playback=True))
-    builder.Connect(plant.get_output_port(0), visualizer.get_input_port(0))
     
-
+    builder.Connect(plant.get_output_port(0),Rigidbody_selector.get_input_port(0))      
+    builder.Connect(Rigidbody_selector.get_output_port(0), visualizer.get_input_port(0))
+    
+    print("4. Building diagram\n")
+    
     diagram = builder.Build()
 
     # Set the initial conditions for the simulation.
@@ -317,7 +367,8 @@ def RunSimulation(robobee_plant, control_law, x0=np.random.random((13, 1)), dura
     state.SetFromVector(x0)
 
     # Create the simulator.
-
+    print("5. Create simulation\n")
+    
     simulator = Simulator(diagram, context)
     simulator.Initialize()
     # simulator.set_publish_every_time_step(False)

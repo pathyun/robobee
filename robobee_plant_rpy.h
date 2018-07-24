@@ -63,7 +63,7 @@ class RobobeePlant final : public systems::LeafSystem<T> {
   // Allow different specializations to access each other's private data.
   template <typename> friend class RobobeePlant;
 
-  static constexpr int kStateDimension{13};
+  static constexpr int kStateDimension{12};
   static constexpr int kInputDimension{4};
 
   // TODO(naveenoid): Declare these as parameters in the context.
