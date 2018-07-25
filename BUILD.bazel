@@ -13,7 +13,14 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
+
 )
+
+cc_binary(
+    name = "testfileout",
+    srcs = ["testfileout.cc"],
+)
+
 
 drake_cc_library(
     name = "robobee_plant",
@@ -79,7 +86,7 @@ drake_cc_binary(
         "-simulation_real_time_rate=0.0",
     ],
     deps = [
-        ":robobee_plant",
+        ":robobee_plant_rpy",
         "//common:find_resource",
         "//common:is_approx_equal_abstol",
         "//lcm",
@@ -139,10 +146,18 @@ drake_cc_binary(
         "//systems/controllers:linear_quadratic_regulator",
         "//systems/primitives:trajectory_source",
         "//systems/trajectory_optimization:direct_collocation",
+        ":TrajectoryOptPlot",
         "@gflags",
     ],
 )
 
+drake_cc_library(
+    name = "TrajectoryOptPlot",
+    srcs = ["TrajectoryOptPlot.cc",
+            "TrajectoryOptPlot.h"],
+    deps = ["//systems/trajectory_optimization:direct_collocation",
+            "//common/proto:call_python"], 
+)
 drake_cc_binary(
     name = "run_robobee_traj_optimization_rpy",
     srcs = ["test/run_robobee_traj_optimization_rpy.cc"],

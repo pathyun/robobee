@@ -108,9 +108,9 @@ int do_main() {
 
   // Orientation q (quaternion)
   Eigen::Vector3d rpyf=Eigen::Vector3d:: Zero(3); 
-  rpyf(0) = 0.;
+  rpyf(0) = M_PI;
   rpyf(1) = 0.;
-  rpyf(2) = 1.;
+  rpyf(2) = 0.;
   
   xf(3) =rpyf(0);
   xf(4) =rpyf(1);
