@@ -35,9 +35,9 @@ RobobeePlant<T>::RobobeePlant()
 
 Matrix3d default_moment_of_inertia() {
   return (Eigen::Matrix3d() <<  // BR
-                0.0142, 0, 0,  // BR
-          0,    0.0134, 0,  // BR
-          0, 0, 0.0045).finished();
+                0.00142, 0, 0,  // BR
+          0,    0.00134, 0,  // BR
+          0, 0, 0.00045).finished();
 }
 }  // namespace
 

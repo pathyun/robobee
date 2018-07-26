@@ -57,8 +57,10 @@ namespace robobee {
 
 typedef trajectories::PiecewisePolynomial<double> PiecewisePolynomialType;
 
+DEFINE_double(simulation_real_time_rate, 1., "Real time rate");
+
 namespace {
-DEFINE_double(realtime_factor, 1.0,
+DEFINE_double(realtime_factor, 0.15,
               "Playback speed.  See documentation for "
               "Simulator::set_target_realtime_rate() for details.");
 
@@ -79,8 +81,8 @@ int do_main() {
   
 //-[0] Set up direct collocation
   
-  const int kNumTimeSamples = 40;       // Number of knotpoints including first and last knot
-  const double kMinimumTimeStep = 0.02; // Minimum time step l_T
+  const int kNumTimeSamples = 80;       // Number of knotpoints including first and last knot
+  const double kMinimumTimeStep = 0.002; // Minimum time step l_T
   const double kMaximumTimeStep = 0.5;  // Maximum time step u_T
 
 //-[0-1] Create direct collocation object
@@ -296,6 +298,7 @@ int do_main() {
   std::cout << "Ending time: "<< pp_xtraj.end_time() << "\n";
 
 //-[3-4] Run simulation
+  simulator.set_target_realtime_rate(FLAGS_simulation_real_time_rate);
 
   simulator.StepTo(pp_xtraj.end_time());
 

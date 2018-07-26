@@ -44,9 +44,9 @@ show_flag_control =1;
 #-[0-1] Robobee params. From IROS 2015 S.Fuller "Rotating the heading angle of underactuated flapping-wing flyers by wriggle-steering"
 
 m   = 81        # 81 mg
-Ixx = 14.2*1e-3      # 14.2 mg m^2
-Iyy = 13.4*1e-3      # 13.4 mg m^2
-Izz = 4.5*1e-3       # 4.5  mg m^2
+Ixx = 1.42*1e-3      # 1.42 mg m^2
+Iyy = 1.34*1e-3      # 1.34 mg m^2
+Izz = 0.45*1e-3       # 0.45  mg m^2
 g   = 9.80       # 9.8*10^2 m/s^2
 
 #-[0] Initial condition
@@ -146,7 +146,7 @@ Q[0:3,0:3] = 1e8*np.eye(3)
 # Q[9,9] = 1000
 # Q[10:13,10:13] = 1*np.eye(3)
 
-R = 1*np.eye(4)
+R = 0.01*np.eye(4)
 
 Aout = np.zeros((14,14))
 Aout[0:3,3:6]=np.eye(3)
@@ -481,7 +481,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
 
 
 # Run forward simulation from the specified initial condition
-duration =10.
+duration =4.
 
 input_log, state_log = \
     RunSimulation(robobee_plantBS,
@@ -514,8 +514,8 @@ for j in range(0,num_iteration):
     rpy[:,j]=RollPitchYaw(R).vector()
     u[:,j]=ubar[:,j]
     u[0,j]=state_out[7,j] # Control
-    
 
+# print(u)
 
 # Visualize state and input traces
 # print("times",state_log.data()[1,:])RollPitchYaw
