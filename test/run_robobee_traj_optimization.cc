@@ -156,10 +156,10 @@ int do_main() {
   xf(2) = 0.3; // z
 
   // Orientation q (quaternion)  q = (w, x, y, z)
-  double thetaf = 2*M_PI/1;  // angle of otation
+  double thetaf = 1*M_PI/1;  // angle of otation
   Eigen::Vector3d vf_q=Eigen::Vector3d:: Zero(3); 
-  vf_q(0) = 1.;
-  vf_q(1) = 0.;
+  vf_q(0) = 0.;
+  vf_q(1) = 1.;
   vf_q(2) = -0.;
   
   // //Creating a unit quaternion q_u = cos(\theta/2) + sin(\theta/2)*\bar{q_v}/||q_v||
@@ -184,7 +184,7 @@ int do_main() {
 
   // Angular velocity w
   Eigen::Vector3d wf = Eigen::Vector3d::Zero(3);
-  wf(0)= -10.;
+  wf(0)= -1.;
   wf(1)=  0.;
   wf(2)=  0. ;
   

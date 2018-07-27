@@ -43,18 +43,20 @@ show_flag_control =1;
 #-[0] Intialization
 #-[0-1] Robobee params. From IROS 2015 S.Fuller "Rotating the heading angle of underactuated flapping-wing flyers by wriggle-steering"
 
+# Pick mg unit
 m   = 81        # 81 mg
-Ixx = 1.42*1e-3      # 1.42 mg m^2
-Iyy = 1.34*1e-3      # 1.34 mg m^2
-Izz = 0.45*1e-3       # 0.45  mg m^2
-g   = 9.80       # 9.8*10^2 m/s^2
+Ixx = 1.42*1e-3      # 1.42 x 10^-3  mg m^2                     | 1.42 x 10 mg cm^2
+Iyy = 1.34*1e-3      # 1.34 x 10^-3  mg m^2                     | 1.34 x 10 mg cm^2             
+Izz = 0.45*1e-3      # 0.45 x 10^-3  mg m^2                     | 0.45 x 10 mg cm^2
+g   = 9.80*1e0       # 9.8 m/s^2    use 1 \tau = 0.1s          | 9.8  x 1 cm/s^2
 
 #-[0] Initial condition
 
 r0 = np.array([0,0,0])
 q0 = np.zeros((4)) # quaternion setup
 theta0 = math.pi/4;  # angle of rotation
-v0_q=np.array([1.,0.,1.])
+# v0_q=np.array([1.,0.,1.])
+v0_q=np.array([0.,0.,1.])
 q0[0]=math.cos(theta0/2) #q0
 # print("q:",q[0])
 v0_norm=np.sqrt((np.dot(v0_q,v0_q))) # axis of rotation
@@ -66,9 +68,9 @@ q0[1:4]=math.sin(theta0/2)*v0_q.T/v0_norm
 xi10 = g;
 v0 = np.zeros((3))
 w0 = np.zeros((3))          # angular velocity
-w0[0]=-0.1 #0;
-w0[1]=0  #-0.1;
-w0[2]=0.1 # 0.2;
+w0[0]=-1 # 0.1 #0;
+w0[1]=0 # 0  #-0.1;
+w0[2]=1 # 0.1 # 0.2;
 
 xi20 =0;
 #-[0-1] Stack up the state in R^13
@@ -128,10 +130,11 @@ else:
     print("\n\n1. Set point is not a fixed point")
 
 #- Tracking parameter
+time_gain = 1; # 10\tau = 1s
 
-T_period = 1
-w_freq = math.pi/T_period
-radius = 0.5
+T_period = 2*time_gain # 
+w_freq = 2*math.pi/T_period
+radius = .5
 #-[2] Output dynamics Lyapunov function
 # 
 #  V(eta)= 1/2eta^T M_out eta
@@ -141,12 +144,19 @@ radius = 0.5
 #
 #  dVdt < -eta^T Q eta< 0  where Q is positive definite
 
-Q = 1e6*np.eye(14)
-Q[0:3,0:3] = 1e8*np.eye(3)
+Q = 1e0*np.eye(14)
+Q[0:3,0:3] = 1e4*np.eye(3) # eta1
+Q[3:6,3:6] = 1e3*np.eye(3) # eta2
+Q[6:9,6:9] = 1e2*np.eye(3) # eta3
+Q[9,9] = 1e0     # eta5
+Q[10:13,10:13] = 1e1*np.eye(3) #eta 4
+
+
 # Q[9,9] = 1000
 # Q[10:13,10:13] = 1*np.eye(3)
 
-R = 0.01*np.eye(4)
+R = 1e0*np.eye(4)
+R[0,]
 
 Aout = np.zeros((14,14))
 Aout[0:3,3:6]=np.eye(3)
@@ -206,7 +216,7 @@ Mout = solve_continuous_are(Aout,Bout,Q,R)
 
 
 
-def test_controller(x):
+def test_controller(x, t):
     # This should return a 4x1 u that is bounded
     # between -input_max and input_max.
     # Remember to wrap the angular values back to
@@ -215,8 +225,9 @@ def test_controller(x):
     global g, xf, uf, K
     
     u[0]=1
-    u[1] =0;
-    u[3]=-2
+    u[1]=0
+    u[2]=-0.001
+    u[3]=0
 
     return u
 
@@ -255,18 +266,40 @@ def test_Feedback_Linearization_controller_BS(x,t):
 
     print("t:", t)
     
-    x_f = radius*math.cos(w_freq*t)
-    y_f = radius*math.sin(w_freq*t)
-    print("x_f:",x_f)
-    print("y_f:",y_f)
-    dx_f = -radius*math.pow(w_freq,1)*math.sin(w_freq*t)
-    dy_f = radius*math.pow(w_freq,1)*math.cos(w_freq*t)
-    ddx_f = -radius*math.pow(w_freq,2)*math.cos(w_freq*t)
-    ddy_f = -radius*math.pow(w_freq,2)*math.sin(w_freq*t)
-    dddx_f = radius*math.pow(w_freq,3)*math.sin(w_freq*t)
-    dddy_f = -radius*math.pow(w_freq,3)*math.cos(w_freq*t)
-    ddddx_f = radius*math.pow(w_freq,4)*math.cos(w_freq*t)
-    ddddy_f = radius*math.pow(w_freq,4)*math.sin(w_freq*t)
+
+    # # # # Example 1 : Circle
+
+    # x_f = radius*math.cos(w_freq*t)
+    # y_f = radius*math.sin(w_freq*t)
+    # # print("x_f:",x_f)
+    # # print("y_f:",y_f)
+    # dx_f = -radius*math.pow(w_freq,1)*math.sin(w_freq*t)
+    # dy_f = radius*math.pow(w_freq,1)*math.cos(w_freq*t)
+    # ddx_f = -radius*math.pow(w_freq,2)*math.cos(w_freq*t)
+    # ddy_f = -radius*math.pow(w_freq,2)*math.sin(w_freq*t)
+    # dddx_f = radius*math.pow(w_freq,3)*math.sin(w_freq*t)
+    # dddy_f = -radius*math.pow(w_freq,3)*math.cos(w_freq*t)
+    # ddddx_f = radius*math.pow(w_freq,4)*math.cos(w_freq*t)
+    # ddddy_f = radius*math.pow(w_freq,4)*math.sin(w_freq*t)
+
+    # Example 2 : Lissajous curve a=1 b=2
+    ratio_ab=2;
+    a=1;
+    b=ratio_ab*a;
+    delta_lissajous = math.pi/2;
+
+    x_f = radius*math.sin(a*w_freq*t+delta_lissajous)
+    y_f = radius*math.sin(b*w_freq*t)
+    # print("x_f:",x_f)
+    # print("y_f:",y_f)
+    dx_f = radius*math.pow(a*w_freq,1)*math.cos(a*w_freq*t+delta_lissajous)
+    dy_f = radius*math.pow(b*w_freq,1)*math.cos(b*w_freq*t)
+    ddx_f = -radius*math.pow(a*w_freq,2)*math.sin(a*w_freq*t+delta_lissajous)
+    ddy_f = -radius*math.pow(b*w_freq,2)*math.sin(b*w_freq*t)
+    dddx_f = -radius*math.pow(a*w_freq,3)*math.cos(a*w_freq*t+delta_lissajous)
+    dddy_f = -radius*math.pow(b*w_freq,3)*math.cos(b*w_freq*t)
+    ddddx_f = radius*math.pow(a*w_freq,4)*math.sin(a*w_freq*t+delta_lissajous)
+    ddddy_f = radius*math.pow(b*w_freq,4)*math.sin(b*w_freq*t)
 
 
     e1=np.array([1,0,0]) # e3 elementary vector
@@ -527,15 +560,15 @@ if show_flag_q==1:
         # print("i:%d" %i)
         plt.subplot(3, 1, i+1)
         # print("test:", num_state)
-        plt.plot(state_log.sample_times(), state_log.data()[i, :])
+        plt.plot(state_log.sample_times()*time_gain, state_log.data()[i, :])
         plt.grid(True)
         if i==0:
-            plt.ylabel("x")
+            plt.ylabel("x (m) ")
         elif i==1:
-            plt.ylabel("y")
+            plt.ylabel("y (m) ")
         elif i==2:
-            plt.ylabel("z")
-        
+            plt.ylabel("z (m) ")
+    plt.xlabel("Time (s)")
 
     ####- Plot Euler angle
     fig = plt.figure(2).set_size_inches(6, 6)
@@ -543,16 +576,17 @@ if show_flag_q==1:
         # print("i:%d" %i)
         plt.subplot(3, 1, i+1)
         # print("test:", num_state)
-        plt.plot(state_log.sample_times(), rpy[i,:])
+        plt.plot(state_log.sample_times()*time_gain, rpy[i,:])
         plt.grid(True)
         j=i+3
         # plt.ylabel("x[%d]" % j)
         if i==0:
-            plt.ylabel("roll")
+            plt.ylabel("roll (rad)")
         elif i==1:
-            plt.ylabel("pitch")
+            plt.ylabel("pitch (rad)")
         elif i==2:
-            plt.ylabel("yaw")
+            plt.ylabel("yaw (rad)")
+    plt.xlabel("Time (s)")
 
 
 ####- Plot Quaternion
@@ -581,31 +615,39 @@ if show_flag_qd==1:
         # print("i:%d" %i)
         plt.subplot(3, 1, i+1)
         # print("test:", num_state)
-        plt.plot(state_log.sample_times(), state_log.data()[i+8, :])
+        tau_sec_gain = 1; # 10\tau =1 s
+        com_vel_body = tau_sec_gain*state_log.data()[i+8, :];
+        plt.plot(state_log.sample_times()*time_gain, com_vel_body)
         plt.grid(True)
         j=i+7
         # plt.ylabel("x[%d]" % j)
         if i==0:
-            plt.ylabel("vx")
+            plt.ylabel("vx (m/s)")
         elif i==1:
-            plt.ylabel("vy")
+            plt.ylabel("vy (m/s)")
         elif i==2:
-            plt.ylabel("vz")
+            plt.ylabel("vz (m/s)")
+    plt.xlabel("Time (s)")
+
     fig = plt.figure(4).set_size_inches(6, 6)
     for i in range(0,3):
         # print("i:%d" %i)
         plt.subplot(3, 1, i+1)
         # print("test:", num_state)
-        plt.plot(state_log.sample_times(), state_log.data()[i+11, :])
+        tau_sec_gain = 1; # 10\tau =1 s
+        angular_vel_body = tau_sec_gain*state_log.data()[i+11, :];
+        plt.plot(state_log.sample_times()*time_gain, angular_vel_body)
         plt.grid(True)
         j=i+10
         # plt.ylabel("x[%d]" % j)
         if i==0:
-            plt.ylabel("wx")
+            plt.ylabel("wx (rad/s)")
         elif i==1:
-            plt.ylabel("wy")
+            plt.ylabel("wy (rad/s)")
         elif i==2:
-            plt.ylabel("wz")
+            plt.ylabel("wz (rad/s)")
+    plt.xlabel("Time (s)")
+
 
 if show_flag_control==1:
     fig = plt.figure(5).set_size_inches(6, 6)
@@ -613,17 +655,26 @@ if show_flag_control==1:
         # print("i:%d" %i)
         plt.subplot(4, 1, i+1)
         # print("test:", num_state)
-        plt.plot(state_log.sample_times(), u[i,:])
+        if i==0:
+            thrust_mg_gain=1; #  1cm = 0.01m
+            control = u[i,:]*thrust_mg_gain;
+        else:
+            mg_gain=1e0; # 1000mg =1g
+            control = mg_gain*u[i,:];
+
+        plt.plot(state_log.sample_times()*time_gain, control)
         plt.grid(True)
         # plt.ylabel("x[%d]" % j)
         if i==0:
-            plt.ylabel("Thrust")
+            plt.ylabel("Thrust accel (m/s^2)")
         elif i==1:
-            plt.ylabel("tau_r")
+            plt.ylabel("tau_r (mNmm)")
         elif i==2:
-            plt.ylabel("tau_p")
+            plt.ylabel("tau_p (mNmm)")
         elif i==3:
-            plt.ylabel("tau_y")
+            plt.ylabel("tau_y (mNmm)")
+    plt.xlabel("Time (s)")
+
 # plt.subplot(num_state, 1, num_state)
 # plt.plot(input_log.sample_times(), input_log.data()[0, :])
 # plt.ylabel("u[0]")

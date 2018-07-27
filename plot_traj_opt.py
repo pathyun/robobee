@@ -25,6 +25,8 @@ from pydrake.all import (
 
 np.set_printoptions(precision=3, suppress=True)
 
+gravity = 9.8; # Needed to compute thrust to weight ratio
+
 show_flag_qd = 1;
 show_flag_q=1;
 show_flag_control =1;
@@ -88,11 +90,12 @@ if show_flag_q==1:
         plt.plot(knot_values, x_col_values[:,i], 'go')
         plt.grid(True)
         if i==0:
-            plt.ylabel("x")
+            plt.ylabel("x (m)")
         elif i==1:
-            plt.ylabel("y")
+            plt.ylabel("y (m)")
         elif i==2:
-            plt.ylabel("z")
+            plt.ylabel("z (m)")
+    plt.xlabel("Time (s)")
         
 
     ####- Plot Euler angle
@@ -106,11 +109,12 @@ if show_flag_q==1:
         j=i+3
         # plt.ylabel("x[%d]" % j)
         if i==0:
-            plt.ylabel("roll")
+            plt.ylabel("roll (rad)")
         elif i==1:
-            plt.ylabel("pitch")
+            plt.ylabel("pitch (rad)")
         elif i==2:
-            plt.ylabel("yaw")
+            plt.ylabel("yaw (rad)")
+    plt.xlabel("Time (s)")
 
 
 ####- Plot Quaternion
@@ -145,11 +149,13 @@ if show_flag_qd==1:
         j=i+7
         # plt.ylabel("x[%d]" % j)
         if i==0:
-            plt.ylabel("vx")
+            plt.ylabel("vx (m/s)")
         elif i==1:
-            plt.ylabel("vy")
+            plt.ylabel("vy (m/s)")
         elif i==2:
-            plt.ylabel("vz")
+            plt.ylabel("vz (m/s)")
+    plt.xlabel("Time (s)")
+
     fig = plt.figure(4).set_size_inches(6, 6)
     for i in range(0,3):
         # print("i:%d" %i)
@@ -161,11 +167,12 @@ if show_flag_qd==1:
         j=i+10
         # plt.ylabel("x[%d]" % j)
         if i==0:
-            plt.ylabel("wx")
+            plt.ylabel("wx (rad/s)")
         elif i==1:
-            plt.ylabel("wy")
+            plt.ylabel("wy (rad/s)")
         elif i==2:
-            plt.ylabel("wz")
+            plt.ylabel("wz (rad/s)")
+    plt.xlabel("Time (s)")
 
 if show_flag_control==1:
     fig = plt.figure(5).set_size_inches(6, 6)
@@ -173,22 +180,24 @@ if show_flag_control==1:
         # print("i:%d" %i)
         plt.subplot(4, 1, i+1)
         # print("test:", num_state)
-        plt.plot(times, u[:,i])
-        plt.plot(knot_values, u_col_values[:,i], 'go')
+        if i==0:
+            mg_gain=1/gravity; #  1cm = 0.01m
+        else:
+            mg_gain=1e0; # 1000mg =1g
+        plt.plot(times, u[:,i]*mg_gain)
+        plt.plot(knot_values, u_col_values[:,i]*mg_gain, 'go')
         plt.grid(True)
         # plt.ylabel("x[%d]" % j)
         if i==0:
-            plt.ylabel("Thrust")
+            plt.ylabel("T-W ratio")
         elif i==1:
-            plt.ylabel("tau_r")
+            plt.ylabel("tau_r (mNmm)")
         elif i==2:
-            plt.ylabel("tau_p")
+            plt.ylabel("tau_p (mNmm)")
         elif i==3:
-            plt.ylabel("tau_y")
+            plt.ylabel("tau_y (mNmm)")
+    plt.xlabel("Time (s)")
 # plt.subplot(num_state, 1, num_state)
 # plt.plot(input_log.sample_times(), input_log.data()[0, :])
 # plt.ylabel("u[0]")
 # plt.xlabel("t")
-
-plt.grid(True)
-plt.show()
