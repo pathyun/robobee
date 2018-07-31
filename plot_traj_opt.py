@@ -201,3 +201,5 @@ if show_flag_control==1:
 # plt.plot(input_log.sample_times(), input_log.data()[0, :])
 # plt.ylabel("u[0]")
 # plt.xlabel("t")
+
+plt.show()

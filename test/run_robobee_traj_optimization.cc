@@ -81,7 +81,7 @@ int do_main() {
   
 //-[0] Set up direct collocation
   
-  const int kNumTimeSamples = 80;       // Number of knotpoints including first and last knot
+  const int kNumTimeSamples = 100;       // Number of knotpoints including first and last knot
   const double kMinimumTimeStep = 0.002; // Minimum time step l_T
   const double kMaximumTimeStep = 0.5;  // Maximum time step u_T
 
@@ -115,7 +115,7 @@ int do_main() {
 
   double theta0 = M_PI/4;  // angle of otation
   Eigen::Vector3d v0_q=Eigen::Vector3d:: Zero(3); // Axis of rotation
-  v0_q(0) = 1.;
+  v0_q(0) = 0.;
   v0_q(1) = 0.;
   v0_q(2) = 1.;
   
@@ -139,9 +139,9 @@ int do_main() {
 
   // Angular velocity w
   Eigen::Vector3d w0 = Eigen::Vector3d::Zero(3);
-  w0(0)= -0.1;  // w_x
+  w0(0)= 0;  // w_x
   w0(1)=  0.;   // w_y
-  w0(2)=  0.1 ; // w_z
+  w0(2)=  0 ; // w_z
   
   x0(10)=w0(0); // w1=1;
   x0(11)=w0(1);// w2=1;
@@ -156,10 +156,10 @@ int do_main() {
   xf(2) = 0.3; // z
 
   // Orientation q (quaternion)  q = (w, x, y, z)
-  double thetaf = 1*M_PI/1;  // angle of otation
+  double thetaf = 2*M_PI/1;  // angle of otation
   Eigen::Vector3d vf_q=Eigen::Vector3d:: Zero(3); 
-  vf_q(0) = 0.;
-  vf_q(1) = 1.;
+  vf_q(0) = 1.;
+  vf_q(1) = 0.;
   vf_q(2) = -0.;
   
   // //Creating a unit quaternion q_u = cos(\theta/2) + sin(\theta/2)*\bar{q_v}/||q_v||
@@ -184,8 +184,8 @@ int do_main() {
 
   // Angular velocity w
   Eigen::Vector3d wf = Eigen::Vector3d::Zero(3);
-  wf(0)= -1.;
-  wf(1)=  0.;
+  wf(0)= 0.;
+  wf(1)=  -1.;
   wf(2)=  0. ;
   
   xf(10)=wf(0); // w1=1;
