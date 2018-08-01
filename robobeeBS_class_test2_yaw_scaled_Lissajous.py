@@ -132,7 +132,7 @@ else:
 #- Tracking parameter
 time_gain = 1; # 10\tau = 1s
 
-T_period = 3*time_gain # 
+T_period = 5*time_gain # 
 w_freq = 2*math.pi/T_period
 radius = .5
 #-[2] Output dynamics Lyapunov function
@@ -148,7 +148,7 @@ Q = 1e0*np.eye(14)
 Q[0:3,0:3] = 1e4*np.eye(3) # eta1
 Q[3:6,3:6] = 1e3*np.eye(3) # eta2
 Q[6:9,6:9] = 1e2*np.eye(3) # eta3
-Q[9,9] = 1e0     # eta5
+Q[9,9] = 1e1     # eta5
 Q[10:13,10:13] = 1e1*np.eye(3) #eta 4
 
 
@@ -262,11 +262,11 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # y4= wz
     #
     # Analysis: The zero dynamics is unstable.
+    
     global g, xf, Aout, Bout, Mout, T_period, w_freq, radius
 
     print("t:", t)
     
-
     # # # # Example 1 : Circle
 
     # x_f = radius*math.cos(w_freq*t)
@@ -283,13 +283,15 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # ddddy_f = radius*math.pow(w_freq,4)*math.sin(w_freq*t)
 
     # Example 2 : Lissajous curve a=1 b=2
-    ratio_ab=2;
-    a=1;
+    ratio_ab=4./3.;
+    a=3;
     b=ratio_ab*a;
-    delta_lissajous = 0 #math.pi/2;
+    delta_lissajous = math.pi/2;
 
     x_f = radius*math.sin(a*w_freq*t+delta_lissajous)
     y_f = radius*math.sin(b*w_freq*t)
+    print("a:", a)
+    print("b:", b)
     # print("x_f:",x_f)
     # print("y_f:",y_f)
     dx_f = radius*math.pow(a*w_freq,1)*math.cos(a*w_freq*t+delta_lissajous)
@@ -381,7 +383,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # Four output
     y1 = x[0]-x_f
     y2 = x[1]-y_f
-    y3 = x[2]-zd-0
+    y3 = x[2]-zd
     y4 = math.atan2(Rqe1_x,Rqe1_y)-math.pi/8
     # print("Rqe1_x:", Rqe1_x)
 
@@ -397,13 +399,14 @@ def test_Feedback_Linearization_controller_BS(x,t):
     dy1 = eta2[0]
     dy2 = eta2[1]
     dy3 = eta2[2]
+    dy4 = 0
 
     x2y2 = (math.pow(Rqe1_x,2)+math.pow(Rqe1_y,2)) # x^2+y^2
 
     eta6_temp = np.zeros(3)     #eta6_temp = (ye2T-xe1T)/(x^2+y^2)
-    eta6_temp = (Rqe1_y*e2.T-Rqe1_x*e1.T)/x2y2    
+    eta6_temp = (Rqe1_y*e2.T-Rqe1_x*e1.T)/x2y2  
     # print("eta6_temp:", eta6_temp)
-    eta6 = np.dot(eta6_temp,np.dot(-Rqe1_hat,w))
+    eta6 = np.dot(eta6_temp,np.dot(-Rqe1_hat,w)) -dy4
     print("Rqe1_hat:", Rqe1_hat)
 
     # Second derivative of first three output
@@ -514,7 +517,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
 
 
 # Run forward simulation from the specified initial condition
-duration =12.
+duration =20.
 
 input_log, state_log = \
     RunSimulation(robobee_plantBS,
@@ -542,6 +545,8 @@ for j in range(0,num_iteration):
     # ubar[:,j]=test_Feedback_Linearization_controller_BS(state_out[:,j])
     ubar[:,j]=input_out[:,j]
     q_temp =state_out[3:7,j]
+    q_temp_norm =math.sqrt(np.dot(q_temp,q_temp));
+    q_temp = q_temp/q_temp_norm;
     quat_temp = Quaternion(q_temp)    # Quaternion
     R = RotationMatrix(quat_temp)
     rpy[:,j]=RollPitchYaw(R).vector()
@@ -656,7 +661,7 @@ if show_flag_control==1:
         plt.subplot(4, 1, i+1)
         # print("test:", num_state)
         if i==0:
-            thrust_mg_gain=1; #  1cm = 0.01m
+            thrust_mg_gain=1/g; #  1cm = 0.01m
             control = u[i,:]*thrust_mg_gain;
         else:
             mg_gain=1e0; # 1000mg =1g
@@ -666,7 +671,7 @@ if show_flag_control==1:
         plt.grid(True)
         # plt.ylabel("x[%d]" % j)
         if i==0:
-            plt.ylabel("Thrust accel (m/s^2)")
+            plt.ylabel("T-W ratio")
         elif i==1:
             plt.ylabel("tau_r (mNmm)")
         elif i==2:

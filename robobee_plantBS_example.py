@@ -349,7 +349,7 @@ def RunSimulation(robobee_plantBS, control_law, x0=np.random.random((15, 1)), du
     # Drake visualization
     print("3. Connecting plant output to DrakeVisualizer\n")
     
-    rtree = RigidBodyTree(FindResourceOrThrow("drake/examples/robobee/robobee.urdf"), FloatingBaseType.kQuaternion)
+    rtree = RigidBodyTree(FindResourceOrThrow("drake/examples/robobee/robobee_twobar.urdf"), FloatingBaseType.kQuaternion)
     lcm = DrakeLcm()
     visualizer = builder.AddSystem(DrakeVisualizer(tree=rtree,
        lcm=lcm, enable_playback=True))
@@ -374,8 +374,8 @@ def RunSimulation(robobee_plantBS, control_law, x0=np.random.random((15, 1)), du
     # simulator.set_publish_every_time_step(False)
 
     simulator.set_target_realtime_rate(1)
-    simulator.get_integrator().set_fixed_step_mode(False)
-    simulator.get_integrator().set_maximum_step_size(0.05)
+    simulator.get_integrator().set_fixed_step_mode(True)
+    simulator.get_integrator().set_maximum_step_size(0.005)
 
     # Simulate for the requested duration.
     simulator.StepTo(duration)
