@@ -82,7 +82,7 @@ int do_main() {
 //-[0] Set up direct collocation
   
   const int kNumTimeSamples = 100;       // Number of knotpoints including first and last knot
-  const double kMinimumTimeStep = 0.002; // Minimum time step l_T
+  const double kMinimumTimeStep = 0.0002; // Minimum time step l_T
   const double kMaximumTimeStep = 0.5;  // Maximum time step u_T
 
 //-[0-1] Create direct collocation object
@@ -107,17 +107,17 @@ int do_main() {
   Eigen::VectorXd x0=Eigen::VectorXd::Zero(13);
 
   // Position r
-  x0(0) = 1.; // x
+  x0(0) = 1.; // x //1.
   x0(1) = 0.; // y
-  x0(2) = 0.; // z
+  x0(2) = 0.; // z //0.
 
   // Orientation q (quaternion)  q = (w, x, y, z)
 
-  double theta0 = M_PI/4;  // angle of otation
+  double theta0 = 0; //M_PI/4;  // angle of otation
   Eigen::Vector3d v0_q=Eigen::Vector3d:: Zero(3); // Axis of rotation
   v0_q(0) = 0.;
-  v0_q(1) = 0.;
-  v0_q(2) = 1.;
+  v0_q(1) = 1.;
+  v0_q(2) = 1.; // 1.
   
   // //Creating a unit quaternion q_u = cos(\theta/2) + sin(\theta/2)*\bar{q_v}/||q_v||
   Eigen::VectorXd q = Eigen::VectorXd::Zero(4);
@@ -158,9 +158,9 @@ int do_main() {
   // Orientation q (quaternion)  q = (w, x, y, z)
   double thetaf = 2*M_PI/1;  // angle of otation
   Eigen::Vector3d vf_q=Eigen::Vector3d:: Zero(3); 
-  vf_q(0) = 1.;
-  vf_q(1) = 0.;
-  vf_q(2) = -0.;
+  vf_q(0) = 0.; //1
+  vf_q(1) = 2.;
+  vf_q(2) = 0.;
   
   // //Creating a unit quaternion q_u = cos(\theta/2) + sin(\theta/2)*\bar{q_v}/||q_v||
 
@@ -185,7 +185,7 @@ int do_main() {
   // Angular velocity w
   Eigen::Vector3d wf = Eigen::Vector3d::Zero(3);
   wf(0)= 0.;
-  wf(1)=  -1.;
+  wf(1)=  2.;
   wf(2)=  0. ;
   
   xf(10)=wf(0); // w1=1;
@@ -211,24 +211,34 @@ int do_main() {
 // // dircol.AddLinearConstraint(dircol.initial_state() == x0);
 // // dircol.AddLinearConstraint(dircol.final_state() == xG);
 
-// 4. Thrust constraint
+// 4. Control constraint
 
+  double u_min;
+  double u_max;
+  u_min = -2.;
+  u_max = 2.;
   for(int i=0; i<kNumTimeSamples;i++){
 
     auto u_indexed = dircol.input(i);
     dircol.AddBoundingBoxConstraint(0,1e10,u_indexed(0)); // Positive Thrust Constraint
+    dircol.AddBoundingBoxConstraint(u_min,u_max,u_indexed(1)); // Positive Thrust Constraint
+    dircol.AddBoundingBoxConstraint(u_min,u_max,u_indexed(2)); // Positive Thrust Constraint
+    dircol.AddBoundingBoxConstraint(u_min,u_max,u_indexed(3)); // Positive Thrust Constraint
+    auto x_indexed = dircol.state(i);
+    dircol.AddConstraint(x_indexed(3)*x_indexed(3)+x_indexed(4)*x_indexed(4)+
+                         x_indexed(5)*x_indexed(5)+x_indexed(6)*x_indexed(6)-1,-0.01,0.01); // Positive Thrust Constraint
   }
 
 //-[0-3] Adding cost to the problem 
 
-  double gain_R = 20.; 
+  double gain_R = 15.; 
   double gain_Q = 20.;
 
   Eigen::Matrix4d R = gain_R*Eigen::Matrix4d::Identity();
   Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(13,13);
   
   Q(10,10)=gain_Q/8;
-  Q(11,11)=gain_Q;
+  Q(11,11)=1;
   Q(12,12)=gain_Q;
 
 

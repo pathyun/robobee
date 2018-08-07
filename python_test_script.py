@@ -12,14 +12,18 @@ from pydrake.all import (
     Quaternion,
     RollPitchYaw
     )
+from pydrake.all import MathematicalProgram
+from pydrake.solvers import mathematicalprogram as mp
+from pydrake.solvers.ipopt import IpoptSolver
+from pydrake.solvers.gurobi import GurobiSolver
 
 ##################### 
 # Quaternion test
 #####################
 
 q = np.zeros((4,1)) # quaternion setup
-theta = math.pi/4;  # angle of rotation
-v=np.array([1.,1.,0])
+theta = math.pi/2;  # angle of rotation
+v=np.array([0.,1.,0])
 q[0]=math.cos(theta/2) #q0
 # print("q:",q[0])
 v_norm=np.sqrt((np.dot(v,v))) # axis of rotation
@@ -111,4 +115,85 @@ print("w_dot:",w_dot)
 # xSym = Symbol('x')
 # ySym = Symbol('y')
 
+####################################
+# Mathematical programming test
+####################################
 
+# Set up for QP problem
+
+prog = MathematicalProgram()
+u_var = prog.NewContinuousVariables(4, "u_var")
+solverid = prog.GetSolverId()
+
+tol = 1e-6
+prog.SetSolverOption(mp.SolverType.kIpopt,"tol", tol);
+prog.SetSolverOption(mp.SolverType.kIpopt,"constr_viol_tol", tol);
+prog.SetSolverOption(mp.SolverType.kIpopt,"acceptable_tol", tol);
+prog.SetSolverOption(mp.SolverType.kIpopt,"acceptable_constr_viol_tol", tol);
+
+prog.SetSolverOption(mp.SolverType.kIpopt, "print_level", 2) # CAUTION: Assuming that solver used Ipopt
+
+A_fl = np.eye(4)
+# A_fl[0:3,0] = [1, 0, 0]
+# A_fl[0:3,1:4] = -np.dot(Rqe3_hat,I_inv)*xi1
+# A_fl[3,1:4]=g_yaw
+A_fl = np.array([[ 1.9430e-02, -0.0000e+00,  7.8752e+03,  4.5375e+03],
+       [-1.8993e-01, -7.4316e+03, -0.0000e+00,  4.6419e+02],
+       [ 9.8161e-01, -1.4379e+03, -1.5589e+02, -0.0000e+00],
+       [ 0.0000e+00,  4.6609e+01, -1.3138e+02,  2.2222e+03]])
+
+A_fl_inv = np.linalg.inv(A_fl)
+A_fl_det = np.linalg.det(A_fl)
+# print("I_inv:", I_inv)
+print("A_fl:", A_fl)
+print("A_fl_det:", A_fl_det)
+
+Quadratic_Positive_def = np.matmul(A_fl.T,A_fl)*1e0  # Q =A^TA 
+QP_det = np.linalg.det(Quadratic_Positive_def)
+
+L_fhx_star = np.zeros(4)
+L_fhx_star[0]=1;
+L_fhx_star[1]=1;
+L_fhx_star[2]=1;
+L_fhx_star[3]=1;
+
+c = np.array([-8.3592e+00, -8.3708e+06, -5.1451e+05,  2.0752e+05])   # c
+
+d = np.zeros(4)
+d[0]=1;
+d[1]=-1;
+d[2]=1;
+d[3]=-1;
+
+d= np.array([5.0752e+01, 4.7343e+05, 8.4125e+05, 6.2668e+05])
+
+phi0= -36332.36234347365;
+
+print("Qp : ",Quadratic_Positive_def)
+print("Qp det: ", QP_det)
+
+# Quadratic cost : u^TQu + c^Tu
+CLF_QP_cost_v_effective = np.dot(u_var, np.dot(Quadratic_Positive_def,u_var))+np.dot(c,u_var)
+
+    
+prog.AddQuadraticCost(CLF_QP_cost_v_effective)
+prog.AddConstraint(np.dot(d,u_var)+phi0<=0)
+
+solver = IpoptSolver()
+
+
+prog.Solve()
+# solver.Solve(prog)
+print("Optimal u : ", prog.GetSolution(u_var))
+u_CLF_QP = prog.GetSolution(u_var)
+
+# ('A_fl:', )
+# ('A_fl_det:', 137180180557.17741)
+# ('Qp : ', array([[ 1.0000e+00, -1.5475e-13,  4.0035e-14,  3.7932e-15],
+#        [-1.5475e-13,  5.7298e+07,  2.1803e+05, -3.3461e+06],
+#        [ 4.0035e-14,  2.1803e+05,  6.2061e+07,  3.5442e+07],
+#        [ 3.7932e-15, -3.3461e+06,  3.5442e+07,  2.5742e+07]]))
+# ('Qp det: ', 1.8818401937699662e+22)
+# ('c_QP', array([-8.3592e+00, -8.3708e+06, -5.1451e+05,  2.0752e+05]))
+# ('phi0_exp: ', -36332.36234347365)
+# ('d : ', array([5.0752e+01, 4.7343e+05, 8.4125e+05, 6.2668e+05]))

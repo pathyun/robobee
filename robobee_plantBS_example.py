@@ -375,7 +375,7 @@ def RunSimulation(robobee_plantBS, control_law, x0=np.random.random((15, 1)), du
 
     simulator.set_target_realtime_rate(1)
     simulator.get_integrator().set_fixed_step_mode(True)
-    simulator.get_integrator().set_maximum_step_size(0.005)
+    simulator.get_integrator().set_maximum_step_size(0.05)
 
     # Simulate for the requested duration.
     simulator.StepTo(duration)

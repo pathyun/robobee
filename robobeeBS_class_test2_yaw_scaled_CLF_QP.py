@@ -17,6 +17,12 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.linalg import solve_continuous_are
+from pydrake.all import MathematicalProgram
+from pydrake.solvers import mathematicalprogram as mp
+from pydrake.solvers.ipopt import IpoptSolver
+from pydrake.solvers.gurobi import GurobiSolver
+from pydrake.solvers.mosek import MosekSolver
+
 
 from robobee_plantBS_example import *
 
@@ -32,13 +38,13 @@ from pydrake.all import (
     )
 
 # Make numpy printing prettier
-np.set_printoptions(precision=4, suppress=True)
+np.set_printoptions(precision=4, suppress=False)
 
 #-[0.0] Show figure flag
 
-show_flag_qd = 0;
-show_flag_q=0;
-show_flag_control =0;
+show_flag_qd = 1;
+show_flag_q=1;
+show_flag_control =1;
 
 #-[0] Intialization
 #-[0-1] Robobee params. From IROS 2015 S.Fuller "Rotating the heading angle of underactuated flapping-wing flyers by wriggle-steering"
@@ -48,7 +54,7 @@ m   = 81        # 81 mg
 Ixx = 1.42*1e-3      # 1.42 x 10^-3  mg m^2                     | 1.42 x 10 mg cm^2
 Iyy = 1.34*1e-3      # 1.34 x 10^-3  mg m^2                     | 1.34 x 10 mg cm^2             
 Izz = 0.45*1e-3      # 0.45 x 10^-3  mg m^2                     | 0.45 x 10 mg cm^2
-g   = 9.80*1e0       # 9.8 m/s^2    use 1 \tau = 0.1s           | 9.8  x 1 cm/s^2
+g   = 9.80*1e0       # 9.8 m/s^2    use 1 \tau = 0.1s          | 9.8  x 1 cm/s^2
 
 #-[0] Initial condition
 
@@ -132,9 +138,9 @@ else:
 #- Tracking parameter
 time_gain = 1; # 10\tau = 1s
 
-T_period = 5*time_gain # 
+T_period = 3*time_gain # 
 w_freq = 2*math.pi/T_period
-radius = .5
+radius = 0. #.5
 #-[2] Output dynamics Lyapunov function
 # 
 #  V(eta)= 1/2eta^T M_out eta
@@ -148,7 +154,7 @@ Q = 1e0*np.eye(14)
 Q[0:3,0:3] = 1e4*np.eye(3) # eta1
 Q[3:6,3:6] = 1e3*np.eye(3) # eta2
 Q[6:9,6:9] = 1e2*np.eye(3) # eta3
-Q[9,9] = 1e1     # eta5
+Q[9,9] = 1e0     # eta5
 Q[10:13,10:13] = 1e1*np.eye(3) #eta 4
 
 
@@ -156,7 +162,6 @@ Q[10:13,10:13] = 1e1*np.eye(3) #eta 4
 # Q[10:13,10:13] = 1*np.eye(3)
 
 R = 1e0*np.eye(4)
-R[0,]
 
 Aout = np.zeros((14,14))
 Aout[0:3,3:6]=np.eye(3)
@@ -170,6 +175,27 @@ Bout[10:14,0:4]= np.eye(4)
 print("A:", Aout, "B:", Bout)
 Mout = solve_continuous_are(Aout,Bout,Q,R)
 # print("M_out:", Mout)
+
+# Minimum and maximum eigenvalues for Q and Mout used for CLF-QP constraint
+
+eval_Q = np.linalg.eigvals(Q)
+eval_P = np.linalg.eigvals(Mout)
+
+min_e_Q = np.min(eval_Q)
+max_e_P = np.max(eval_P)
+
+# Set up for QP problem
+prog = MathematicalProgram()
+u_var = prog.NewContinuousVariables(4, "u_var")
+solverid = prog.GetSolverId()
+
+tol = 1e-6
+prog.SetSolverOption(mp.SolverType.kIpopt,"tol", tol);
+prog.SetSolverOption(mp.SolverType.kIpopt,"constr_viol_tol", tol);
+prog.SetSolverOption(mp.SolverType.kIpopt,"acceptable_tol", tol);
+prog.SetSolverOption(mp.SolverType.kIpopt,"acceptable_constr_viol_tol", tol);
+
+prog.SetSolverOption(mp.SolverType.kIpopt, "print_level", 2) # CAUTION: Assuming that solver used Ipopt
 
 # #-[2] Linearization and get (K,S) for LQR
 
@@ -262,10 +288,13 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # y4= wz
     #
     # Analysis: The zero dynamics is unstable.
-    
     global g, xf, Aout, Bout, Mout, T_period, w_freq, radius
 
+    print("%%%%%%%%%%%%%%%%%%%%%")
+
     print("t:", t)
+    prog = MathematicalProgram()
+    u_var = prog.NewContinuousVariables(4, "u_var")
     
     # # # # Example 1 : Circle
 
@@ -283,15 +312,13 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # ddddy_f = radius*math.pow(w_freq,4)*math.sin(w_freq*t)
 
     # Example 2 : Lissajous curve a=1 b=2
-    ratio_ab=4./3.;
-    a=3;
+    ratio_ab=2;
+    a=1;
     b=ratio_ab*a;
-    delta_lissajous = math.pi/2;
+    delta_lissajous = 0 #math.pi/2;
 
     x_f = radius*math.sin(a*w_freq*t+delta_lissajous)
     y_f = radius*math.sin(b*w_freq*t)
-    print("a:", a)
-    print("b:", b)
     # print("x_f:",x_f)
     # print("y_f:",y_f)
     dx_f = radius*math.pow(a*w_freq,1)*math.cos(a*w_freq*t+delta_lissajous)
@@ -383,7 +410,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # Four output
     y1 = x[0]-x_f
     y2 = x[1]-y_f
-    y3 = x[2]-zd
+    y3 = x[2]-zd-0
     y4 = math.atan2(Rqe1_x,Rqe1_y)-math.pi/8
     # print("Rqe1_x:", Rqe1_x)
 
@@ -399,14 +426,14 @@ def test_Feedback_Linearization_controller_BS(x,t):
     dy1 = eta2[0]
     dy2 = eta2[1]
     dy3 = eta2[2]
-    dy4 = 0
 
     x2y2 = (math.pow(Rqe1_x,2)+math.pow(Rqe1_y,2)) # x^2+y^2
+    print("x2y2:", x2y2)
 
     eta6_temp = np.zeros(3)     #eta6_temp = (ye2T-xe1T)/(x^2+y^2)
-    eta6_temp = (Rqe1_y*e2.T-Rqe1_x*e1.T)/x2y2  
+    eta6_temp = (Rqe1_y*e2.T-Rqe1_x*e1.T)/x2y2    
     # print("eta6_temp:", eta6_temp)
-    eta6 = np.dot(eta6_temp,np.dot(-Rqe1_hat,w)) -dy4
+    eta6 = np.dot(eta6_temp,np.dot(-Rqe1_hat,w))
     print("Rqe1_hat:", Rqe1_hat)
 
     # Second derivative of first three output
@@ -459,18 +486,78 @@ def test_Feedback_Linearization_controller_BS(x,t):
     print("A_fl:", A_fl)
     print("A_fl_det:", A_fl_det)
 
-    # Output dyamics
-
-    eta = np.hstack([eta1, eta2, eta3, eta5, eta4, eta6])
-
-    # Full feedback controller
+    # Drift in the output dynamics
 
     U_temp = np.zeros(4)
     U_temp[0:3]  = B_qw
     U_temp[3]    = B_yaw
 
+    # Output dyamics
+
+    eta = np.hstack([eta1, eta2, eta3, eta5, eta4, eta6])
+    deta_drfit = np.hstack([eta2, eta3, eta4, eta6, B_qw, B_yaw ])
+
+    # v-CLF QP controller
+
+    FP_PF = np.dot(Aout.T,Mout)+np.dot(Mout,Aout)
+    PG = np.dot(Mout, Bout)
+    
+    L_FVx = np.dot(eta,np.dot(FP_PF,eta))
+    L_GVx = 2*np.dot(eta.T,PG) # row vector
+    L_fhx_star = U_temp;
+
+    Vx = np.dot(eta, np.dot(Mout,eta) )
+    phi0_exp = L_FVx+np.dot(L_GVx,L_fhx_star)+(min_e_Q/max_e_P)*Vx # exponentially stabilizing
+    phi1_decouple = np.dot(L_GVx,A_fl)
+    
+    # # Solve QP
+    v_var = np.dot(A_fl,u_var)  + L_fhx_star
+    Quadratic_Positive_def = np.matmul(A_fl.T,A_fl)
+    QP_det = np.linalg.det(Quadratic_Positive_def)
+    c_QP = 2*np.dot(L_fhx_star.T,A_fl)
+
+    print("Qp : ",Quadratic_Positive_def)
+    print("Qp det: ", QP_det)
+    print("c_QP", c_QP)
+
+    CLF_QP_cost_v = np.dot(v_var,v_var)
+    CLF_QP_cost_v_effective = np.dot(u_var, np.dot(Quadratic_Positive_def,u_var))+np.dot(c_QP,u_var)
+    
+    CLF_QP_cost_u = np.dot(u_var,u_var)
+    
+    phi1 = np.dot(phi1_decouple,u_var)
+
+    print("phi0_exp: ", phi0_exp)
+    print("PG:", PG)
+    # print("L_GVx:", L_GVx)
+    print("eta6", eta6)
+    print("d : ", phi1_decouple)
+    # print("Cost expression:", CLF_QP_cost_v)
+    # print("Const expression:", phi0_exp+phi1)
+
+    
+    prog.AddQuadraticCost(CLF_QP_cost_v_effective)
+    prog.AddConstraint(phi0_exp+phi1<=0)
+
+    # solver = IpoptSolver()
+    prog.SetSolverOption(mp.SolverType.kIpopt, "print_level", 5) # CAUTION: Assuming that solver used Ipopt
+
+
+    
+    
+    # solver = GurobiSolver()
+    # print solver.available()
+    # assert(solver.available()==True)
+    # assertEqual(solver.solver_type(), mp.SolverType.kGurobi)
+    # solver.Solve(prog)
+    # assertEqual(result, mp.SolutionResult.kSolutionFound)
+    
+    # mp.AddLinearConstraint()
     # print("x:", x)
-    print("eta_norm:", np.dot(eta, np.dot(Mout,eta) ))
+    print("CLF value:", Vx)
+    print("phi_0_exp:", phi0_exp)
+    print("phi1_decouple:", phi1_decouple)
+    
     # print("eta1:", eta1)
     # print("eta2:", eta2)
     # print("eta3:", eta3)
@@ -480,36 +567,62 @@ def test_Feedback_Linearization_controller_BS(x,t):
             
     mu = np.zeros(4)
     k = np.zeros((4,14))
-    k = np.dot(Bout.T,Mout)
+    k = np.matmul(Bout.T,Mout)
     # print("k:", k)
 
-    mu = -np.dot(k,eta)
+    mu = -1/2*np.matmul(k,eta)
 
     v=-U_temp+mu
     
-    U_fl = np.dot(A_fl_inv,v)       # Feedback controller
+    U_fl = np.matmul(A_fl_inv,v)       # Feedback controller
 
-    U_fl_zero = np.dot(A_fl_inv,-U_temp)
+    U_fl_zero = np.matmul(A_fl_inv,-U_temp)
 
     # dx = robobee_plantBS.evaluate_f(U_fl,x)
     
     # print("dx", dx)
 
-    u = np.zeros(4)
+    u_FL = np.zeros(4)
 
-    u[0] = U_fl[0]
-    u[1:4] = U_fl[1:4]
+    u_FL[0] = U_fl[0]
+    u_FL[1:4] = U_fl[1:4]
 
     # print("\n######################")
     # # print("qe3:", A_fl[0,0])
     # print("u:", u)
     # print("\n####################33")
+
+    solver = GurobiSolver()
+
+    prog.SetInitialGuess(u_var, u_FL)
     
-    deta4 = B_qw+Rqe3*U_fl_zero[0]+np.dot(-np.dot(Rqe3_hat,I_inv),U_fl_zero[1:4])*xi1
+    print solver.available()
+    prog.Solve()
+    # solver.Solve(prog)
+    print("Optimal u : ", prog.GetSolution(u_var))
+    u_CLF_QP = prog.GetSolution(u_var)
+    
+    
+    deta4 = B_qw+Rqe3*U_fl_zero[0]+np.matmul(-np.matmul(Rqe3_hat,I_inv),U_fl_zero[1:4])*xi1
     deta6 = B_yaw+np.dot(g_yaw,U_fl_zero[1:4])
     # print("deta4:",deta4)
     # print("deta6:",deta6)
+    phi1_opt = np.dot(phi1_decouple, u_CLF_QP)
+    phi1_opt_FL = np.dot(phi1_decouple, u_FL)
+    
 
+
+    print("FL u: ", u_FL)
+    print("CLF u:", u_CLF_QP)
+    print("Cost FL: ", np.dot(v,v))
+
+    v_CLF = np.dot(A_fl,u_CLF_QP)+L_fhx_star
+    print("Cost CLF: ", np.dot(v_CLF,v_CLF))
+    print("Constraint FL : ", phi0_exp+phi1_opt_FL)
+    print("Constraint CLF : ", phi0_exp+phi1_opt)
+    u = u_CLF_QP
+    # print("eigenvalues minQ maxP:", [min_e_Q, max_e_P])
+ 
     return u 
 
 
@@ -517,7 +630,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
 
 
 # Run forward simulation from the specified initial condition
-duration =40.
+duration =12.
 
 input_log, state_log = \
     RunSimulation(robobee_plantBS,
@@ -545,8 +658,6 @@ for j in range(0,num_iteration):
     # ubar[:,j]=test_Feedback_Linearization_controller_BS(state_out[:,j])
     ubar[:,j]=input_out[:,j]
     q_temp =state_out[3:7,j]
-    q_temp_norm =math.sqrt(np.dot(q_temp,q_temp));
-    q_temp = q_temp/q_temp_norm;
     quat_temp = Quaternion(q_temp)    # Quaternion
     R = RotationMatrix(quat_temp)
     rpy[:,j]=RollPitchYaw(R).vector()
@@ -661,7 +772,7 @@ if show_flag_control==1:
         plt.subplot(4, 1, i+1)
         # print("test:", num_state)
         if i==0:
-            thrust_mg_gain=1/g; #  1cm = 0.01m
+            thrust_mg_gain=1; #  1cm = 0.01m
             control = u[i,:]*thrust_mg_gain;
         else:
             mg_gain=1e0; # 1000mg =1g
@@ -671,7 +782,7 @@ if show_flag_control==1:
         plt.grid(True)
         # plt.ylabel("x[%d]" % j)
         if i==0:
-            plt.ylabel("T-W ratio")
+            plt.ylabel("Thrust accel (m/s^2)")
         elif i==1:
             plt.ylabel("tau_r (mNmm)")
         elif i==2:
@@ -685,5 +796,5 @@ if show_flag_control==1:
 # plt.ylabel("u[0]")
 # plt.xlabel("t")
 
-    plt.grid(True)
-    plt.show()
+plt.grid(True)
+plt.show()
