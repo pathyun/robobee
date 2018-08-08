@@ -24,6 +24,7 @@ from pydrake.solvers.gurobi import GurobiSolver
 from pydrake.solvers.mosek import MosekSolver
 
 
+
 from robobee_plantBS_example import *
 
 from pydrake.all import (
@@ -138,9 +139,9 @@ else:
 #- Tracking parameter
 time_gain = 1; # 10\tau = 1s
 
-T_period = 3*time_gain # 
+T_period = 5*time_gain # 
 w_freq = 2*math.pi/T_period
-radius = 0. #.5
+radius = 0.5 #.5
 #-[2] Output dynamics Lyapunov function
 # 
 #  V(eta)= 1/2eta^T M_out eta
@@ -150,12 +151,12 @@ radius = 0. #.5
 #
 #  dVdt < -eta^T Q eta< 0  where Q is positive definite
 
-Q = 1e0*np.eye(14)
+Q = 1e2*np.eye(14)
 Q[0:3,0:3] = 1e4*np.eye(3) # eta1
 Q[3:6,3:6] = 1e3*np.eye(3) # eta2
 Q[6:9,6:9] = 1e2*np.eye(3) # eta3
-Q[9,9] = 1e0     # eta5
-Q[10:13,10:13] = 1e1*np.eye(3) #eta 4
+Q[9,9] = 1e2     # eta5
+Q[10:13,10:13] = 1e2*np.eye(3) #eta 4
 
 
 # Q[9,9] = 1000
@@ -172,8 +173,11 @@ Aout[9,13]=1
 Bout = np.zeros((14,4))
 Bout[10:14,0:4]= np.eye(4)
 
+# Observ_matrix=obsv(A, Q)
+
 print("A:", Aout, "B:", Bout)
 Mout = solve_continuous_are(Aout,Bout,Q,R)
+# print("Mout",Mout)
 # print("M_out:", Mout)
 
 # Minimum and maximum eigenvalues for Q and Mout used for CLF-QP constraint
@@ -184,12 +188,13 @@ eval_P = np.linalg.eigvals(Mout)
 min_e_Q = np.min(eval_Q)
 max_e_P = np.max(eval_P)
 
+print("Evalues: ", [min_e_Q, max_e_P])
 # Set up for QP problem
 prog = MathematicalProgram()
 u_var = prog.NewContinuousVariables(4, "u_var")
 solverid = prog.GetSolverId()
 
-tol = 1e-6
+tol = 1e-10
 prog.SetSolverOption(mp.SolverType.kIpopt,"tol", tol);
 prog.SetSolverOption(mp.SolverType.kIpopt,"constr_viol_tol", tol);
 prog.SetSolverOption(mp.SolverType.kIpopt,"acceptable_tol", tol);
@@ -290,6 +295,8 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # Analysis: The zero dynamics is unstable.
     global g, xf, Aout, Bout, Mout, T_period, w_freq, radius
 
+    print("%%%%%%%%%%%%%%%%%%%%%")
+    print("%%CLF-QP  %%%%%%%%%%%")
     print("%%%%%%%%%%%%%%%%%%%%%")
 
     print("t:", t)
@@ -428,13 +435,12 @@ def test_Feedback_Linearization_controller_BS(x,t):
     dy3 = eta2[2]
 
     x2y2 = (math.pow(Rqe1_x,2)+math.pow(Rqe1_y,2)) # x^2+y^2
-    print("x2y2:", x2y2)
-
+    
     eta6_temp = np.zeros(3)     #eta6_temp = (ye2T-xe1T)/(x^2+y^2)
     eta6_temp = (Rqe1_y*e2.T-Rqe1_x*e1.T)/x2y2    
     # print("eta6_temp:", eta6_temp)
     eta6 = np.dot(eta6_temp,np.dot(-Rqe1_hat,w))
-    print("Rqe1_hat:", Rqe1_hat)
+    # print("Rqe1_hat:", Rqe1_hat)
 
     # Second derivative of first three output
     eta3 = np.zeros(3)
@@ -472,7 +478,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
     g_yaw = np.zeros(3)
     g_yaw = -np.dot(eta6_temp,np.dot(Rqe1_hat,I_inv))
 
-    print("g_yaw:", g_yaw)
+    # print("g_yaw:", g_yaw)
     # Decoupling matrix A(x)\in\mathbb{R}^4
 
     A_fl = np.zeros((4,4))
@@ -495,6 +501,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # Output dyamics
 
     eta = np.hstack([eta1, eta2, eta3, eta5, eta4, eta6])
+    eta_norm = np.dot(eta,eta)
     deta_drfit = np.hstack([eta2, eta3, eta4, eta6, B_qw, B_yaw ])
 
     # v-CLF QP controller
@@ -507,7 +514,9 @@ def test_Feedback_Linearization_controller_BS(x,t):
     L_fhx_star = U_temp;
 
     Vx = np.dot(eta, np.dot(Mout,eta) )
-    phi0_exp = L_FVx+np.dot(L_GVx,L_fhx_star)+(min_e_Q/max_e_P)*Vx # exponentially stabilizing
+    # phi0_exp = L_FVx+np.dot(L_GVx,L_fhx_star)+(min_e_Q/max_e_P)*Vx*1    # exponentially stabilizing
+    phi0_exp = L_FVx+np.dot(L_GVx,L_fhx_star)+min_e_Q*eta_norm      # more exact bound - exponentially stabilizing
+    
     phi1_decouple = np.dot(L_GVx,A_fl)
     
     # # Solve QP
@@ -515,10 +524,15 @@ def test_Feedback_Linearization_controller_BS(x,t):
     Quadratic_Positive_def = np.matmul(A_fl.T,A_fl)
     QP_det = np.linalg.det(Quadratic_Positive_def)
     c_QP = 2*np.dot(L_fhx_star.T,A_fl)
-
-    print("Qp : ",Quadratic_Positive_def)
-    print("Qp det: ", QP_det)
-    print("c_QP", c_QP)
+    c_QP_T = 2*np.matmul(A_fl,L_fhx_star)
+    
+    print("L_fhx_star: ",L_fhx_star)
+    print("c_QP:", c_QP)
+    print("c_QP_T:", c_QP_T)
+    
+    # print("Qp : ",Quadratic_Positive_def)
+    # print("Qp det: ", QP_det)
+    # print("c_QP", c_QP)
 
     CLF_QP_cost_v = np.dot(v_var,v_var)
     CLF_QP_cost_v_effective = np.dot(u_var, np.dot(Quadratic_Positive_def,u_var))+np.dot(c_QP,u_var)
@@ -527,11 +541,11 @@ def test_Feedback_Linearization_controller_BS(x,t):
     
     phi1 = np.dot(phi1_decouple,u_var)
 
-    print("phi0_exp: ", phi0_exp)
-    print("PG:", PG)
+    # print("phi0_exp: ", phi0_exp)
+    # print("PG:", PG)
     # print("L_GVx:", L_GVx)
-    print("eta6", eta6)
-    print("d : ", phi1_decouple)
+    # print("eta6", eta6)
+    # print("d : ", phi1_decouple)
     # print("Cost expression:", CLF_QP_cost_v)
     # print("Const expression:", phi0_exp+phi1)
 
@@ -555,8 +569,8 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # mp.AddLinearConstraint()
     # print("x:", x)
     print("CLF value:", Vx)
-    print("phi_0_exp:", phi0_exp)
-    print("phi1_decouple:", phi1_decouple)
+    # print("phi_0_exp:", phi0_exp)
+    # print("phi1_decouple:", phi1_decouple)
     
     # print("eta1:", eta1)
     # print("eta2:", eta2)
@@ -569,6 +583,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
     k = np.zeros((4,14))
     k = np.matmul(Bout.T,Mout)
     # print("k:", k)
+    k = np.matmul(np.linalg.inv(R),k)
 
     mu = -1/2*np.matmul(k,eta)
 
@@ -621,7 +636,8 @@ def test_Feedback_Linearization_controller_BS(x,t):
     print("Constraint FL : ", phi0_exp+phi1_opt_FL)
     print("Constraint CLF : ", phi0_exp+phi1_opt)
     u = u_CLF_QP
-    # print("eigenvalues minQ maxP:", [min_e_Q, max_e_P])
+
+    print("eigenvalues minQ maxP:", [min_e_Q, max_e_P])
  
     return u 
 
@@ -630,7 +646,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
 
 
 # Run forward simulation from the specified initial condition
-duration =12.
+duration =15.
 
 input_log, state_log = \
     RunSimulation(robobee_plantBS,
@@ -658,7 +674,10 @@ for j in range(0,num_iteration):
     # ubar[:,j]=test_Feedback_Linearization_controller_BS(state_out[:,j])
     ubar[:,j]=input_out[:,j]
     q_temp =state_out[3:7,j]
+    q_temp_norm =math.sqrt(np.dot(q_temp,q_temp));
+    q_temp = q_temp/q_temp_norm;
     quat_temp = Quaternion(q_temp)    # Quaternion
+
     R = RotationMatrix(quat_temp)
     rpy[:,j]=RollPitchYaw(R).vector()
     u[:,j]=ubar[:,j]
