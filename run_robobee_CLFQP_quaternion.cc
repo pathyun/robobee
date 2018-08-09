@@ -20,7 +20,7 @@
 #include "drake/common/find_resource.h"
 #include "drake/common/is_approx_equal_abstol.h"
 #include "drake/examples/robobee/robobee_plant.h"
-#include "drake/examples/robobee/RobobeeFLController.h"
+#include "drake/examples/robobee/RobobeeCLFQPController.h"
 #include "drake/systems/primitives/multiplexer.h"
 #include "drake/systems/primitives/demultiplexer.h"
 #include "drake/systems/primitives/integrator.h"
@@ -34,7 +34,7 @@
 #include "drake/systems/framework/diagram.h"
 #include "drake/systems/framework/diagram_builder.h"
 
-#include "drake/multibody/joints/floating_base_types.h"
+// #include "drake/multibody/joints/floating_base_types.h"
 
 // DEFINE_int32(simulation_trials, 2, "Number of trials to simulate.");
 DEFINE_double(simulation_real_time_rate, 1.0, "Real time rate");
@@ -144,7 +144,7 @@ int do_main() {
   
   m_=robobeeP.m();
   I_=robobeeP.I();
-  auto controller = builder.AddSystem<RobobeeFLController>(m_, I_);
+  auto controller = builder.AddSystem<RobobeeCLFQPController>(m_, I_);
   controller->set_name("controller");
    
   std::cout << controller->get_num_output_ports();

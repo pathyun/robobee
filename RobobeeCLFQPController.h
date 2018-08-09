@@ -1,16 +1,15 @@
 /*
   RobobeeCLFQPController.h
 
-  Objective : Compute the output feedback linearization controller with quaternion
+  Objective : Compute the CLF-QP controller with quaternion
   Algorithm : y1 = x
               y2 = y
               y3 = z
               y4 = yaw(q) // as a function of quaternion
               z = q^Tq 
               Detailed note to be written soon (Proof of Diffeomorphism)
- 
-  Remark : 1) 
 
+  Remark : 1) 
   Author : Nak-seung Patrick Hyun
   Date : 08/07/2018
 */
@@ -21,12 +20,14 @@
 #include <memory>
 #include <Eigen/Core>
 
-#include "drake/math/continuous_algebraic_riccati_equation.h"
 #include "drake/examples/robobee/robobee_plant.h"
+#include "drake/solvers/mathematical_program.h"
+#include "drake/solvers/gurobi_solver.h"
 #include "drake/systems/framework/basic_vector.h"
 #include "drake/systems/framework/leaf_system.h"
 #include "drake/systems/primitives/linear_system.h"
 #include "drake/math/rotation_matrix.h"
+
 
 namespace drake {
 namespace examples {
@@ -34,22 +35,23 @@ namespace robobee {
 
 namespace {
 
-Eigen::MatrixXd default_Mout = Eigen::MatrixXd::Zero(14,14);
+Eigen::MatrixXd default_Mout = Eigen::MatrixXd::Identity(14,14);
 Eigen::MatrixXd default_Bout = Eigen::MatrixXd::Zero(14,4);
 
 }  // namespace
+
 using std::cout;
 using std::endl;
 
 template <typename T>
-class RobobeeFLController : public systems::LeafSystem<T> {
+class RobobeeCLFQPController : public systems::LeafSystem<T> {
  public:
-  RobobeeFLController(double m_arg, const Eigen::Matrix3d& I_arg)
+  RobobeeCLFQPController(double m_arg, const Eigen::Matrix3d& I_arg)
       : robobee_{}, robobee_context_(robobee_.CreateDefaultContext()),
-      g_{9.81}, m_(m_arg), I_(I_arg), Mout_{default_Mout}, Bout_{default_Bout}  {
+      g_{9.81}, m_(m_arg), I_(I_arg), Mout_(default_Mout), Bout_(default_Bout)  {
     this->DeclareInputPort(systems::kVectorValued, kInputDimension);
     this->DeclareVectorOutputPort(systems::BasicVector<T>(kStateDimension),
-                                &RobobeeFLController::CalcControl);
+                                &RobobeeCLFQPController::CalcControl);
     /// Scalar-converting copy constructor.  See @ref system_scalar_conversion.
   // [0] LQR setup for Output feedback controller
 
@@ -84,6 +86,7 @@ class RobobeeFLController : public systems::LeafSystem<T> {
     
     Mout_ =  drake::math::ContinuousAlgebraicRiccatiEquation(  Aout, Bout_, Q, R); // Solution to CARE
 
+  
   
   }
 
@@ -342,6 +345,19 @@ class RobobeeFLController : public systems::LeafSystem<T> {
     // U_fl =A_fl.ldlt().solve(v_temp);
 
     // cout << "\n Feedback Controller : \n" << U_fl << "\n";
+
+// CLF-QP problem
+    solvers::MathematicalProgram prog;
+    auto u_var = prog.NewContinuousVariables(4, "u_var");
+    solvers::GurobiSolver solver;
+
+    bool avail = solver.available();
+    cout << "\n Gurobi Available? : " << avail ;
+
+
+    // tol = 1e-10 
+
+
     output->set_value(U_fl);
 
 

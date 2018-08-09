@@ -2,8 +2,10 @@
 #
 # Feedback_linearizaiton with Back Stepping method with quaternion
 # 
-# Script originated from robobee_class_feedback_linearization.py
+# Script originated from robobee_class_feedback_linearization_Lissajous.py
 # 
+#  CLF-QP controller
+#
 #  Desired output y = [y_1; y_2]\in\mathbb{R}^4:_
 #  y_1 = r
 #  y_2 = yaw= atan(e2TR(q)e1/e1TR(q)e1)
@@ -136,19 +138,20 @@ if xstackf_norm<1e-6:
 else:
     print("\n\n1. Set point is not a fixed point")
 
+
 #- Tracking parameter
 time_gain = 1; # 10\tau = 1s
 
 T_period = 5*time_gain # 
 w_freq = 2*math.pi/T_period
 radius = 0.5 #.5
+
 #-[2] Output dynamics Lyapunov function
 # 
 #  V(eta)= 1/2eta^T M_out eta
 #  for deta = Aout eta + Bout u
 #
-#  Solving CARE to get output feedback controller
-#
+#  Solving CARE to get Control Lyapunov function v(eta)
 #  dVdt < -eta^T Q eta< 0  where Q is positive definite
 
 Q = 1e2*np.eye(14)
@@ -502,8 +505,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
 
     eta = np.hstack([eta1, eta2, eta3, eta5, eta4, eta6])
     eta_norm = np.dot(eta,eta)
-    deta_drfit = np.hstack([eta2, eta3, eta4, eta6, B_qw, B_yaw ])
-
+    
     # v-CLF QP controller
 
     FP_PF = np.dot(Aout.T,Mout)+np.dot(Mout,Aout)
@@ -516,7 +518,6 @@ def test_Feedback_Linearization_controller_BS(x,t):
     Vx = np.dot(eta, np.dot(Mout,eta) )
     # phi0_exp = L_FVx+np.dot(L_GVx,L_fhx_star)+(min_e_Q/max_e_P)*Vx*1    # exponentially stabilizing
     phi0_exp = L_FVx+np.dot(L_GVx,L_fhx_star)+min_e_Q*eta_norm      # more exact bound - exponentially stabilizing
-    
     phi1_decouple = np.dot(L_GVx,A_fl)
     
     # # Solve QP
@@ -524,22 +525,22 @@ def test_Feedback_Linearization_controller_BS(x,t):
     Quadratic_Positive_def = np.matmul(A_fl.T,A_fl)
     QP_det = np.linalg.det(Quadratic_Positive_def)
     c_QP = 2*np.dot(L_fhx_star.T,A_fl)
-    c_QP_T = 2*np.matmul(A_fl,L_fhx_star)
     
-    print("L_fhx_star: ",L_fhx_star)
-    print("c_QP:", c_QP)
-    print("c_QP_T:", c_QP_T)
     
+    # CLF_QP_cost_v = np.dot(v_var,v_var) // Exact quadratic cost
+    CLF_QP_cost_v_effective = np.dot(u_var, np.dot(Quadratic_Positive_def,u_var))+np.dot(c_QP,u_var) # Quadratic cost without constant term
+    
+    # CLF_QP_cost_u = np.dot(u_var,u_var)
+    
+    phi1 = np.dot(phi1_decouple,u_var)
+
+    #----Printing intermediate states
+
+    # print("L_fhx_star: ",L_fhx_star)
+    # print("c_QP:", c_QP)
     # print("Qp : ",Quadratic_Positive_def)
     # print("Qp det: ", QP_det)
     # print("c_QP", c_QP)
-
-    CLF_QP_cost_v = np.dot(v_var,v_var)
-    CLF_QP_cost_v_effective = np.dot(u_var, np.dot(Quadratic_Positive_def,u_var))+np.dot(c_QP,u_var)
-    
-    CLF_QP_cost_u = np.dot(u_var,u_var)
-    
-    phi1 = np.dot(phi1_decouple,u_var)
 
     # print("phi0_exp: ", phi0_exp)
     # print("PG:", PG)
@@ -549,16 +550,8 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # print("Cost expression:", CLF_QP_cost_v)
     # print("Const expression:", phi0_exp+phi1)
 
-    
-    prog.AddQuadraticCost(CLF_QP_cost_v_effective)
-    prog.AddConstraint(phi0_exp+phi1<=0)
-
+    #----Different solver option // Gurobi did not work with python at this point (some binding issue 8/8/2018)
     # solver = IpoptSolver()
-    prog.SetSolverOption(mp.SolverType.kIpopt, "print_level", 5) # CAUTION: Assuming that solver used Ipopt
-
-
-    
-    
     # solver = GurobiSolver()
     # print solver.available()
     # assert(solver.available()==True)
@@ -568,7 +561,6 @@ def test_Feedback_Linearization_controller_BS(x,t):
     
     # mp.AddLinearConstraint()
     # print("x:", x)
-    print("CLF value:", Vx)
     # print("phi_0_exp:", phi0_exp)
     # print("phi1_decouple:", phi1_decouple)
     
@@ -578,64 +570,61 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # print("eta4:", eta4)
     # print("eta5:", eta5)
     # print("eta6:", eta6)
-            
+      
+    # Output Feedback Linearization controller 
     mu = np.zeros(4)
     k = np.zeros((4,14))
     k = np.matmul(Bout.T,Mout)
-    # print("k:", k)
     k = np.matmul(np.linalg.inv(R),k)
 
     mu = -1/2*np.matmul(k,eta)
 
     v=-U_temp+mu
     
-    U_fl = np.matmul(A_fl_inv,v)       # Feedback controller
+    U_fl = np.matmul(A_fl_inv,v)            # Output Feedback controller to comare the result with CLF-QP solver
 
-    U_fl_zero = np.matmul(A_fl_inv,-U_temp)
 
-    # dx = robobee_plantBS.evaluate_f(U_fl,x)
+    # Set up the QP problem
+    prog.AddQuadraticCost(CLF_QP_cost_v_effective)
+    prog.AddConstraint(phi0_exp+phi1<=0)
+
+    prog.SetSolverOption(mp.SolverType.kIpopt, "print_level", 5) # CAUTION: Assuming that solver used Ipopt
+
+    print("CLF value:", Vx) # Current CLF value
+
+    prog.SetInitialGuess(u_var, U_fl)
+    prog.Solve() # Solve with default osqp
     
+    # solver.Solve(prog)
+    print("Optimal u : ", prog.GetSolution(u_var))
+    U_CLF_QP = prog.GetSolution(u_var)
+
+    #---- Printing for debugging
+    # dx = robobee_plantBS.evaluate_f(U_fl,x)    
     # print("dx", dx)
-
-    u_FL = np.zeros(4)
-
-    u_FL[0] = U_fl[0]
-    u_FL[1:4] = U_fl[1:4]
-
     # print("\n######################")
     # # print("qe3:", A_fl[0,0])
     # print("u:", u)
     # print("\n####################33")
-
-    solver = GurobiSolver()
-
-    prog.SetInitialGuess(u_var, u_FL)
     
-    print solver.available()
-    prog.Solve()
-    # solver.Solve(prog)
-    print("Optimal u : ", prog.GetSolution(u_var))
-    u_CLF_QP = prog.GetSolution(u_var)
-    
-    
-    deta4 = B_qw+Rqe3*U_fl_zero[0]+np.matmul(-np.matmul(Rqe3_hat,I_inv),U_fl_zero[1:4])*xi1
-    deta6 = B_yaw+np.dot(g_yaw,U_fl_zero[1:4])
+    # deta4 = B_qw+Rqe3*U_fl_zero[0]+np.matmul(-np.matmul(Rqe3_hat,I_inv),U_fl_zero[1:4])*xi1
+    # deta6 = B_yaw+np.dot(g_yaw,U_fl_zero[1:4])
     # print("deta4:",deta4)
     # print("deta6:",deta6)
-    phi1_opt = np.dot(phi1_decouple, u_CLF_QP)
-    phi1_opt_FL = np.dot(phi1_decouple, u_FL)
-    
 
 
-    print("FL u: ", u_FL)
-    print("CLF u:", u_CLF_QP)
+    phi1_opt = np.dot(phi1_decouple, U_CLF_QP)
+    phi1_opt_FL = np.dot(phi1_decouple, U_fl)
+
+    print("FL u: ", U_fl)
+    print("CLF u:", U_CLF_QP)
     print("Cost FL: ", np.dot(v,v))
 
-    v_CLF = np.dot(A_fl,u_CLF_QP)+L_fhx_star
+    v_CLF = np.dot(A_fl,U_CLF_QP)+L_fhx_star
     print("Cost CLF: ", np.dot(v_CLF,v_CLF))
     print("Constraint FL : ", phi0_exp+phi1_opt_FL)
     print("Constraint CLF : ", phi0_exp+phi1_opt)
-    u = u_CLF_QP
+    u = U_CLF_QP
 
     print("eigenvalues minQ maxP:", [min_e_Q, max_e_P])
  
