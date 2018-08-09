@@ -20,7 +20,7 @@
 #include "drake/systems/framework/diagram.h"
 #include "drake/systems/framework/diagram_builder.h"
 
-DEFINE_int32(simulation_trials, 10, "Number of trials to simulate.");
+DEFINE_int32(simulation_trials, 1, "Number of trials to simulate.");
 DEFINE_double(simulation_real_time_rate, 1.0, "Real time rate");
 DEFINE_double(trial_duration, 7.0, "Duration of execution of each trial");
 
@@ -53,6 +53,7 @@ int do_main() {
   std::cout << "2. Adding Robobee Plant \n";
   auto robobee = builder.AddSystem<RobobeePlant<double>>();
   robobee->set_name("robobee");
+
 
   std::cout << "2. Adding Controller \n";
   auto controller = builder.AddSystem(StabilizingLQRController(

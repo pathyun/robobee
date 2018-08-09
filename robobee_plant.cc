@@ -212,11 +212,11 @@ std::unique_ptr<systems::AffineSystem<double>> StabilizingLQRController(
 
   // Setup LQR cost matrices (penalize position error 10x more than velocity
   // error).
-  Eigen::MatrixXd Q = 0.01*Eigen::MatrixXd::Identity(13, 13);
-  Q.topLeftCorner<3, 3>() = 100000 * Eigen::MatrixXd::Identity(3, 3);
-  Q(2,2)=100000000000;
+  Eigen::MatrixXd Q = 1*Eigen::MatrixXd::Identity(13, 13);
+  Q.topLeftCorner<3, 3>() = 1 * Eigen::MatrixXd::Identity(3, 3);
+  Q(2,2)=1;
   std::cout << Q;
-  Eigen::Matrix4d R = 100000*Eigen::Matrix4d::Identity();
+  Eigen::Matrix4d R = 1*Eigen::Matrix4d::Identity();
 
   return systems::controllers::LinearQuadraticRegulator(
       *robobee_plant, *quad_context_goal, Q, R);

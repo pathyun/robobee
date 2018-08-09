@@ -127,6 +127,37 @@ drake_cc_binary(
 )
 
 drake_cc_binary(
+    name = "run_robobee_FL_quaternion",
+    srcs = ["run_robobee_FL_quaternion.cc",
+            "RobobeeFLController.h",],
+    add_test_rule = 1,
+    data = [":models"],
+    test_rule_args = [
+        "-simulation_trials=2",
+        "-simulation_real_time_rate=0.0",
+    ],
+    deps = [
+        ":robobee_plant",
+        "//math:continuous_algebraic_riccati_equation",
+        "//common:find_resource",
+        "//common:is_approx_equal_abstol",
+        "//lcm",
+        "//multibody:rigid_body_tree",
+        "//multibody:rigid_body_tree_construction",
+        "//multibody/parsers",
+        "//multibody/rigid_body_plant",
+        "//multibody/rigid_body_plant:drake_visualizer",
+        "//systems/analysis:simulator",
+        "//systems/framework:diagram",
+        "//systems/primitives:multiplexer",
+        "//systems/primitives:demultiplexer",
+        "//systems/primitives:integrator",
+        "//multibody/joints",
+        "@gflags",
+    ],
+)
+
+drake_cc_binary(
     name = "run_robobee_traj_optimization",
     srcs = ["test/run_robobee_traj_optimization.cc"],
     add_test_rule = 1,

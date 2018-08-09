@@ -39,6 +39,7 @@ class RobobeePlant final : public systems::LeafSystem<T> {
 
   double m() const { return m_; }
   double g() const { return g_; }
+  Eigen::Matrix3d I() const { return I_; }
 
  protected:
   void CopyStateOut(const systems::Context<T>& context,
