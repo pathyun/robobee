@@ -16,18 +16,22 @@
 
 
 #pragma once
-
+#include <time.h>       /* clock_t, clock, CLOCKS_PER_SEC */
 #include <memory>
 #include <Eigen/Core>
+#include <Eigen/Eigenvalues> 
+
 
 #include "drake/examples/robobee/robobee_plant.h"
 #include "drake/solvers/mathematical_program.h"
 #include "drake/solvers/gurobi_solver.h"
+#include "drake/solvers/ipopt_solver.h"
 #include "drake/systems/framework/basic_vector.h"
 #include "drake/systems/framework/leaf_system.h"
 #include "drake/systems/primitives/linear_system.h"
 #include "drake/math/rotation_matrix.h"
 
+// #include "drake/common/symbolic_expression.h"
 
 namespace drake {
 namespace examples {
@@ -36,6 +40,7 @@ namespace robobee {
 namespace {
 
 Eigen::MatrixXd default_Mout = Eigen::MatrixXd::Identity(14,14);
+Eigen::MatrixXd default_Aout = Eigen::MatrixXd::Identity(14,14);
 Eigen::MatrixXd default_Bout = Eigen::MatrixXd::Zero(14,4);
 
 }  // namespace
@@ -48,7 +53,7 @@ class RobobeeCLFQPController : public systems::LeafSystem<T> {
  public:
   RobobeeCLFQPController(double m_arg, const Eigen::Matrix3d& I_arg)
       : robobee_{}, robobee_context_(robobee_.CreateDefaultContext()),
-      g_{9.81}, m_(m_arg), I_(I_arg), Mout_(default_Mout), Bout_(default_Bout)  {
+      g_{9.81}, m_(m_arg), min_e_Q_(0), max_e_P_(0), I_(I_arg), Mout_(default_Mout), Aout_(default_Aout), Bout_(default_Bout)  {
     this->DeclareInputPort(systems::kVectorValued, kInputDimension);
     this->DeclareVectorOutputPort(systems::BasicVector<T>(kStateDimension),
                                 &RobobeeCLFQPController::CalcControl);
@@ -71,32 +76,42 @@ class RobobeeCLFQPController : public systems::LeafSystem<T> {
     Q.block(6,6,3,3)= ddposition_gain*Eigen::Matrix3d::Identity();
     Q.block(10,10,3,3)= ddposition_gain*Eigen::Matrix3d::Identity();
     
-    Eigen::MatrixXd Aout = Eigen::MatrixXd::Zero(14,14);
+    // Eigen::MatrixXd Aout_ = Eigen::MatrixXd::Zero(14,14);
     // Eigen::MatrixXd Bout_ = Eigen::MatrixXd::Zero(14,4);
     
-    Aout.block(0,3,3,3)=Eigen::Matrix3d::Identity();
-    Aout.block(3,6,3,3)=Eigen::Matrix3d::Identity();
-    Aout.block(6,10,3,3)=Eigen::Matrix3d::Identity();
-    Aout(9,13)=1;
+    Aout_.block(0,3,3,3)=Eigen::Matrix3d::Identity();
+    Aout_.block(3,6,3,3)=Eigen::Matrix3d::Identity();
+    Aout_.block(6,10,3,3)=Eigen::Matrix3d::Identity();
+    Aout_(9,13)=1;
 
     Bout_.block(10,0,4,4)= Eigen::Matrix4d::Identity();
 
     // std::cout << "\n Q:" << Q;
     // std::cout << "\n R:" << R;
     
-    Mout_ =  drake::math::ContinuousAlgebraicRiccatiEquation(  Aout, Bout_, Q, R); // Solution to CARE
+    Mout_ =  drake::math::ContinuousAlgebraicRiccatiEquation(  Aout_, Bout_, Q, R); // Solution to CARE
 
-  
-  
-  }
+    Eigen::SelfAdjointEigenSolver<MatrixX<T>> es;
+    es.compute(Q);
+    VectorX<T> eval_Q = es.eigenvalues().transpose();
+    es.compute(Mout_);
+    VectorX<T> eval_P = es.eigenvalues().transpose();
+
+    // cout << "\n eval_Q : " << eval_Q << "\n";
+    min_e_Q_ = eval_Q.minCoeff();
+    max_e_P_ = eval_P.maxCoeff(); 
+    // cout << "\n min_e_Q_ : " << min_e_Q_ << "\n";
+    // cout << "\n max_e_P_ : " << max_e_P_ << "\n";
+   }
 
   
   void CalcControl(const systems::Context<T>& context,
                          systems::BasicVector<T>* output) const {
 
+    
     const VectorX<T> x = this->EvalVectorInput(context, 0)->get_value();
 
-    const Vector4<T> u(1,0,0,0);
+    // const Vector4<T> u(1,0,0,0);
 
     // [0] Reference trajectory generation (example for circle and hovering at 0.3)
     T t = context.get_time();
@@ -104,7 +119,7 @@ class RobobeeCLFQPController : public systems::LeafSystem<T> {
 
     T_period = 5.; // Period
     w_freq = 2*M_PI*1/T_period; // Rad freq
-    radius = 0.5;
+    radius = 0.;
     x_f = radius*cos(w_freq*t);
     y_f = radius*sin(w_freq*t);
     dx_f = -radius*pow(w_freq,1)*sin(w_freq*t);
@@ -305,7 +320,7 @@ class RobobeeCLFQPController : public systems::LeafSystem<T> {
     // cout << "\n -Rqe3_hat*I_inv*xi1 : \n" << -Rqe3_hat*I_inv*xi1 ;
     // cout << "\n g_yaw : \n" << g_yaw ;
     
-    // cout << "\n A_fl: \n"<< A_fl << "\n";
+    cout << "\n A_fl: \n"<< A_fl << "\n";
     // cout << "\n A_fl_det: \n"<< A_fl_det << "\n";
 
 
@@ -313,7 +328,9 @@ class RobobeeCLFQPController : public systems::LeafSystem<T> {
     // # Output dyamics
     VectorX<T> eta = Eigen::VectorXd::Zero(14);
     eta << eta1, eta2, eta3, eta5, eta4, eta6;
-
+    
+    T eta_norm;
+    eta_norm = eta.dot(eta);
     // # Full feedback controller
     VectorX<T> U_temp = Eigen::VectorXd::Zero(4);
 
@@ -349,16 +366,135 @@ class RobobeeCLFQPController : public systems::LeafSystem<T> {
 // CLF-QP problem
     solvers::MathematicalProgram prog;
     auto u_var = prog.NewContinuousVariables(4, "u_var");
-    solvers::GurobiSolver solver;
+    solvers::IpoptSolver solver;
 
-    bool avail = solver.available();
-    cout << "\n Gurobi Available? : " << avail ;
+    // bool avail = solver.available();
+    // cout << "\n Gurobi Available? : " << avail ;
+
+// CLF-QP set up
+
+    Eigen::MatrixXd FP_PF = Eigen::MatrixXd::Zero(14,14);
+    Eigen::MatrixXd PG = Eigen::MatrixXd::Zero(14,4);     
+    FP_PF = Aout_.transpose()*Mout_+Mout_*Aout_;
+    PG = Mout_*Bout_;
+    
+    T L_FVx, Vx;
+    Eigen::VectorXd L_GVx = Eigen::VectorXd::Zero(4);
+    Eigen::VectorXd L_fhx_star = Eigen::VectorXd::Zero(4); 
+    Eigen::RowVectorXd phi1_decouple = Eigen::RowVectorXd::Zero(4); 
+    
+    L_FVx = eta.dot(FP_PF*eta);
+    L_GVx = 2*eta.transpose()*PG; // # row vector
+    L_fhx_star = U_temp;
+
+    // cout << "\n L_fhx_star : " << L_fhx_star <<"\n";
+
+    // cout << "\n U_temp : " << U_temp <<"\n";
+  
+    Vx = eta.dot(Mout_*eta);
+
+    T phi0_exp, constraint_gain;
+
+    constraint_gain = 1e0;
+    // phi0_exp = L_FVx+L_GVx.dot(L_fhx_star)+(min_e_Q_/max_e_P_)*Vx*1; //   # exponentially stabilizing
+    phi0_exp = L_FVx+L_GVx.dot(L_fhx_star)+min_e_Q_*eta_norm*1e0;    // # more exact bound - exponentially stabilizing
+    phi1_decouple = L_GVx.transpose()*A_fl;
+
+    cout << "\n size of phi1_decouple : "<< phi1_decouple.rows() << "\n";
+    phi0_exp = phi0_exp*constraint_gain;
+    phi1_decouple = phi1_decouple.transpose()*constraint_gain;
+    // cout << "\n phi1_decouple : "<< phi1_decouple <<"\n";
+    // cout << "\n L_GVx : "<< L_GVx <<"\n";
+    
+    // # # Solve QP
+    // Vector4<drake::symbolic::Variables> v_var = Eigen::VectorXd::Zero(4); // WRONG
+    Eigen::VectorXd c_QP = Eigen::VectorXd::Zero(4);
+    // Eigen::MatrixXd Quadratic_Positive_def = Eigen::MatrixXd::Identity(4,4);
+    // Quadratic_Positive_def = 1e4*Quadratic_Positive_def;
+    // Quadratic_Positive_def(0,0) = 1e0;
+    Eigen::MatrixXd Quadratic_Positive_def = Eigen::MatrixXd::Zero(4,4);
+    T QP_det;
+
+    // // v_var = A_fl*u_var  + L_fhx_star;                // TO DO: How to convert Matrix <symbolic::variable> to Extpression?
+    Quadratic_Positive_def = 2*A_fl.transpose()*A_fl;
+    QP_det = 1*Quadratic_Positive_def.determinant();
+    c_QP = 2*L_fhx_star.transpose()*A_fl;
+    
+   
+    
+    // TO DO : Convert the Matrix<symbolic::variable> to Expression so that we can have general expression of the cost function.
+    // # CLF_QP_cost_v = np.dot(v_var,v_var) // Exact quadratic cost
+    // CLF_QP_cost_v_effective = np.dot(u_var, np.dot(Quadratic_Positive_def,u_var))+np.dot(c_QP,u_var) # Quadratic cost without constant term
+    // # CLF_QP_cost_u = np.dot(u_var,u_var)
+    // phi1 = np.dot(phi1_decouple,u_var)
+    // auto quadratic_cost = symbolic::Expression(u_var[0]);
+
+    prog.AddQuadraticCost(Quadratic_Positive_def, c_QP, u_var);
+    prog.AddLinearConstraint(phi1_decouple.transpose(), -1e32, -phi0_exp, u_var);
+
+    cout << "\n Quadratic_Positive_def : "<< Quadratic_Positive_def <<"\n";
+    // cout << "\n c_QP :" << c_QP.transpose() <<"\n";
+    cout << "\n CLF value:" << Vx <<"\n"; //  # Current CLF value
+    cout << "\n eta norm value:" << eta_norm <<"\n"; //  # Current CLF value
+    cout << "\n min_e_Q_:" << min_e_Q_ <<"\n"; //  # Current CLF value
+    cout << "\n max_e_P_ :" << max_e_P_ <<"\n"; //  # Current CLF value
+
+    prog.SetInitialGuess(u_var, U_fl);
+    solvers::SolverId solverid = solver.solver_id();
+    prog.SetSolverOption(solverid, "print_level", 5); // # CAUTION: Assuming that solver used Ipopt
+
+    clock_t t_clock;
+    
+    t_clock = clock();
+    // solvers::SolutionResult result = solver.Solve(prog);
+    solvers::SolutionResult result = prog.Solve();  // # Solve with default osqp
+    t_clock = clock() - t_clock;
+    
+    cout << "\n Solution result : " << result <<"\n";
+    std::vector<solvers::Binding<solvers::LinearConstraint>> allconstraint = prog.GetAllLinearConstraints(); // Get the vectors of Binding of constraints
+    const solvers::Binding<solvers::LinearConstraint>* allconstraint_binding = allconstraint.data(); // Convert it to Binding class pointer   
+
+    Eigen::VectorXd allconstraint_vector = prog.EvalBindingAtSolution(allconstraint_binding[0]); // Evaluate the Binding for the first (0) constraint at the soultion 
 
 
-    // tol = 1e-10 
+    cout << "\n all constraint : " << allconstraint_vector[0] + phi0_exp <<"\n";
+    cout << "\n phi10_exp :" << phi0_exp << "\n";
+    cout << "\n phi1_decouple :" << phi1_decouple << "\n";
+    // solver.Solve(prog)
+    // cout << "Optimal u : " << prog.GetSolution(u_var) << "\n";
+    Eigen::VectorXd U_CLF_QP = Eigen::VectorXd::Zero(4);
+    U_CLF_QP = prog.GetSolution(u_var);
+    
+    cout << "\n Quadratic Programming spent "<< (static_cast<float>(t_clock))*1000/CLOCKS_PER_SEC <<" milisecond(ms)."<< endl;
 
+    Eigen::VectorXd v_CLF = Eigen::VectorXd::Zero(4);
+    Eigen::VectorXd v_FL = Eigen::VectorXd::Zero(4);
+    
+    T phi1_opt, phi1_opt_FL;
+    phi1_opt = phi1_decouple.dot(U_CLF_QP);
+    phi1_opt_FL = phi1_decouple.dot(U_fl);
 
-    output->set_value(U_fl);
+    cout<< "\n FL u: "<< U_fl;
+    cout<< "\n CLF u:"<< U_CLF_QP;
+    
+
+    v_FL = A_fl*U_fl+L_fhx_star;
+    v_CLF = A_fl*U_CLF_QP+L_fhx_star;
+
+    cout<< "\n Cost FL: "<< v_FL.norm();
+    cout<< "\n Cost CLF: "<< v_CLF.norm();
+    cout<< "\n Total energy FL: "<< U_fl.norm();
+    cout<< "\n Total evergy CLF: "<< U_CLF_QP.norm();
+    cout<< "\n Constraint FL : "<< phi0_exp+phi1_opt_FL;
+    cout<< "\n Constraint CLF : "<< phi0_exp+phi1_opt;
+    cout<< "\n Vdot FL : "<<  L_FVx+L_GVx.dot(L_fhx_star)+phi1_opt_FL;
+    cout<< "\n Vdot CLF : "<<  L_FVx+L_GVx.dot(L_fhx_star)+phi1_opt;
+    
+    // CLF-QP Control
+    Eigen::VectorXd u = Eigen::VectorXd::Zero(4);
+    u = U_fl;
+
+    output->set_value(u);
 
 
   }
@@ -375,9 +511,12 @@ class RobobeeCLFQPController : public systems::LeafSystem<T> {
 
   double g_;           // Gravitational acceleration (m/s^2).
   double m_;           // Mass of the robot (kg).
+  double min_e_Q_;
+  double max_e_P_;
   Eigen::Matrix3d I_;  // Moment of Inertia about the Center of Mass
   Eigen::MatrixXd Mout_;  // Moment of Inertia about the Center of Mass
-  Eigen::MatrixXd Bout_;  // Moment of Inertia about the Center of Mass
+  Eigen::MatrixXd Aout_;  // A for Output linear system
+  Eigen::MatrixXd Bout_;  // B for Output linear system
 };
 
 }  // namespace acrobot

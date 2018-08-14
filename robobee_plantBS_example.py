@@ -86,10 +86,19 @@ class RobobeePlantBS(VectorSystem):
         
         # Translation from w to \dot{q}
         Eq = np.zeros((3,4))
-        Eq[0,:] = np.array([-1*q1,    q0, -1*q3,    q2])
-        Eq[1,:] = np.array([-1*q2,    q3,    q0, -1*q1])
-        Eq[2,:] = np.array([-1*q3, -1*q2,    q1,    q0])
+
+
+        # Eq for body frame
+        Eq[0,:] = np.array([-1*q1,    q0,  1*q3, -1*q2]) # [-1*q1,    q0, -1*q3,    q2]
+        Eq[1,:] = np.array([-1*q2, -1*q3,    q0,  1*q1]) # [-1*q2,    q3,    q0, -1*q1]
+        Eq[2,:] = np.array([-1*q3,  1*q2, -1*q1,    q0]) # [-1*q3, -1*q2,    q1,    q0]
         
+        # Eq for world frame
+        # Eq[0,:] = np.array([-1*q1,    q0, -1*q3,    q2])
+        # Eq[1,:] = np.array([-1*q2,    q3,    q0, -1*q1])
+        # Eq[2,:] = np.array([-1*q3, -1*q2,    q1,    q0])
+        
+
       #  quat_dot = np.dot(Eq.T,w)/2.   # \dot{quat}=1/2*E(q)^Tw
 
         # w x (Iw)
@@ -124,6 +133,11 @@ class RobobeePlantBS(VectorSystem):
         # Use the manipulator equation to get qdd.
         qq = x[0:8]
         qqd = x[8:15]
+        wx= qqd[3]   # Body velocity in "body frame"
+        wy= qqd[4]
+        wz= qqd[5]
+        w =np.array([wx,wy,wz])
+        
         (Rq, Eq, wIw, I_inv) = self.GetManipulatorDynamics(qq, qqd)
         
         e3 = np.array([0,0,1])
@@ -146,7 +160,41 @@ class RobobeePlantBS(VectorSystem):
         # print("qd:",qd)
         # print("vd:", vd)
         # print("w:",qqd[3:6])
-        return np.hstack([rd, qd, xi1d, vd, wd, xi2d])
+
+        wd_tot = wd;
+        vd_tot = vd;
+        # Drag force from "Rotating the heading angle of underactuated flapping-wing flyers y wriggle-steering" S.Fuller IROS 2015
+        
+
+        bw =2.0*1e2  # 2.0 x 10-4 Nsm^{-1} (kg/s) mg scale ---> 10^6
+        bw = bw*0.1
+        rw = np.array([0, 0, 9.0*1e-3]) # 9 x 10-3 m
+        v = rd;
+        w_hat = np.zeros((3,3))
+        w_hat[0,:] = np.array([     0,   -w[2],     w[1] ])
+        w_hat[1,:] = np.array([  w[2],       0,    -w[0] ])
+        w_hat[2,:] = np.array([ -w[1],    w[0],        0 ])
+
+
+        Vw = -np.matmul(Rq,np.cross(w.T,rw.T))+v;
+        fdw = -bw*Vw;
+        fdw_b = np.dot(Rq.T,fdw);
+        taud = np.cross(rw.T,fdw_b.T)
+        taud_w = np.dot(I_inv,taud)
+        print("I_inv:",I_inv)
+        print("w:",w)
+        print("v:",v)
+        print("rw:",rw)
+        print("Vw:",Vw)
+        print("fdw_b:",fdw_b)
+        print("fdw:", fdw)
+        print("taud:",taud)
+        print("taud_w:",taud_w)
+        print("u:",u)
+        # wd_tot = wd+taud_w
+        # vd_tot = vd+fdw/self.m
+
+        return np.hstack([rd, qd, xi1d, vd_tot, wd_tot, xi2d])
 
 
     # This method calculates the time derivative of the state,
@@ -223,9 +271,17 @@ class RobobeePlantBS(VectorSystem):
         F1[2,:] = np.array([   q0, -1*q1, -1*q2,    q3])
 
         Eq = np.zeros((3,4))
-        Eq[0,:] = np.array([-1*q1,    q0, -1*q3,    q2])
-        Eq[1,:] = np.array([-1*q2,    q3,    q0, -1*q1])
-        Eq[2,:] = np.array([-1*q3, -1*q2,    q1,    q0])
+
+        # Eq for body frame
+        Eq[0,:] = np.array([-1*q1,    q0,  1*q3, -1*q2]) # [-1*q1,    q0, -1*q3,    q2]
+        Eq[1,:] = np.array([-1*q2, -1*q3,    q0,  1*q1]) # [-1*q2,    q3,    q0, -1*q1]
+        Eq[2,:] = np.array([-1*q3,  1*q2, -1*q1,    q0]) # [-1*q3, -1*q2,    q1,    q0]
+        
+        # Eq for world frame
+        # Eq[0,:] = np.array([-1*q1,    q0, -1*q3,    q2])
+        # Eq[1,:] = np.array([-1*q2,    q3,    q0, -1*q1])
+        # Eq[2,:] = np.array([-1*q3, -1*q2,    q1,    q0])
+
 
         A1 = -1*(self.Izz-self.Iyy)/self.Ixx
         A2 = -1*(self.Ixx-self.Izz)/self.Iyy

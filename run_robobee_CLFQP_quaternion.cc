@@ -38,7 +38,7 @@
 
 // DEFINE_int32(simulation_trials, 2, "Number of trials to simulate.");
 DEFINE_double(simulation_real_time_rate, 1.0, "Real time rate");
-DEFINE_double(trial_duration, 10.0, "Duration of execution of each trial");
+DEFINE_double(trial_duration, 10, "Duration of execution of each trial");
 
 namespace drake {
 using systems::DiagramBuilder;
@@ -261,8 +261,8 @@ int do_main() {
 
     simulator.Initialize();
     simulator.set_target_realtime_rate(FLAGS_simulation_real_time_rate);
-    simulator.get_mutable_integrator()->set_fixed_step_mode(false);
-    simulator.get_mutable_integrator()->set_maximum_step_size(0.005);
+    simulator.get_mutable_integrator()->set_fixed_step_mode(true);
+    simulator.get_mutable_integrator()->set_maximum_step_size(0.05);
     simulator.StepTo(FLAGS_trial_duration);
 
   return 0;

@@ -89,9 +89,9 @@ qf[1:4]=math.sin(thetaf/2)*vf.T/vf_norm
 
 vf = np.zeros((3))
 wf = np.zeros((3))          # angular velocity
-wf[0]=0;
+wf[0]=-1;
 wf[1]=0;
-wf[2]=0;
+wf[2]=1;
 
 
 xf= np.hstack([rf, qf, vf, wf]) # Fixed point for the state

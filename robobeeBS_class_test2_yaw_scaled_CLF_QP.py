@@ -144,7 +144,7 @@ time_gain = 1; # 10\tau = 1s
 
 T_period = 5*time_gain # 
 w_freq = 2*math.pi/T_period
-radius = 0.5 #.5
+radius = 0. #.5
 
 #-[2] Output dynamics Lyapunov function
 # 
@@ -306,39 +306,39 @@ def test_Feedback_Linearization_controller_BS(x,t):
     prog = MathematicalProgram()
     u_var = prog.NewContinuousVariables(4, "u_var")
     
-    # # # # Example 1 : Circle
+    # # # Example 1 : Circle
 
-    # x_f = radius*math.cos(w_freq*t)
-    # y_f = radius*math.sin(w_freq*t)
-    # # print("x_f:",x_f)
-    # # print("y_f:",y_f)
-    # dx_f = -radius*math.pow(w_freq,1)*math.sin(w_freq*t)
-    # dy_f = radius*math.pow(w_freq,1)*math.cos(w_freq*t)
-    # ddx_f = -radius*math.pow(w_freq,2)*math.cos(w_freq*t)
-    # ddy_f = -radius*math.pow(w_freq,2)*math.sin(w_freq*t)
-    # dddx_f = radius*math.pow(w_freq,3)*math.sin(w_freq*t)
-    # dddy_f = -radius*math.pow(w_freq,3)*math.cos(w_freq*t)
-    # ddddx_f = radius*math.pow(w_freq,4)*math.cos(w_freq*t)
-    # ddddy_f = radius*math.pow(w_freq,4)*math.sin(w_freq*t)
-
-    # Example 2 : Lissajous curve a=1 b=2
-    ratio_ab=2;
-    a=1;
-    b=ratio_ab*a;
-    delta_lissajous = 0 #math.pi/2;
-
-    x_f = radius*math.sin(a*w_freq*t+delta_lissajous)
-    y_f = radius*math.sin(b*w_freq*t)
+    x_f = radius*math.cos(w_freq*t)
+    y_f = radius*math.sin(w_freq*t)
     # print("x_f:",x_f)
     # print("y_f:",y_f)
-    dx_f = radius*math.pow(a*w_freq,1)*math.cos(a*w_freq*t+delta_lissajous)
-    dy_f = radius*math.pow(b*w_freq,1)*math.cos(b*w_freq*t)
-    ddx_f = -radius*math.pow(a*w_freq,2)*math.sin(a*w_freq*t+delta_lissajous)
-    ddy_f = -radius*math.pow(b*w_freq,2)*math.sin(b*w_freq*t)
-    dddx_f = -radius*math.pow(a*w_freq,3)*math.cos(a*w_freq*t+delta_lissajous)
-    dddy_f = -radius*math.pow(b*w_freq,3)*math.cos(b*w_freq*t)
-    ddddx_f = radius*math.pow(a*w_freq,4)*math.sin(a*w_freq*t+delta_lissajous)
-    ddddy_f = radius*math.pow(b*w_freq,4)*math.sin(b*w_freq*t)
+    dx_f = -radius*math.pow(w_freq,1)*math.sin(w_freq*t)
+    dy_f = radius*math.pow(w_freq,1)*math.cos(w_freq*t)
+    ddx_f = -radius*math.pow(w_freq,2)*math.cos(w_freq*t)
+    ddy_f = -radius*math.pow(w_freq,2)*math.sin(w_freq*t)
+    dddx_f = radius*math.pow(w_freq,3)*math.sin(w_freq*t)
+    dddy_f = -radius*math.pow(w_freq,3)*math.cos(w_freq*t)
+    ddddx_f = radius*math.pow(w_freq,4)*math.cos(w_freq*t)
+    ddddy_f = radius*math.pow(w_freq,4)*math.sin(w_freq*t)
+
+    # # Example 2 : Lissajous curve a=1 b=2
+    # ratio_ab=2;
+    # a=1;
+    # b=ratio_ab*a;
+    # delta_lissajous = 0 #math.pi/2;
+
+    # x_f = radius*math.sin(a*w_freq*t+delta_lissajous)
+    # y_f = radius*math.sin(b*w_freq*t)
+    # # print("x_f:",x_f)
+    # # print("y_f:",y_f)
+    # dx_f = radius*math.pow(a*w_freq,1)*math.cos(a*w_freq*t+delta_lissajous)
+    # dy_f = radius*math.pow(b*w_freq,1)*math.cos(b*w_freq*t)
+    # ddx_f = -radius*math.pow(a*w_freq,2)*math.sin(a*w_freq*t+delta_lissajous)
+    # ddy_f = -radius*math.pow(b*w_freq,2)*math.sin(b*w_freq*t)
+    # dddx_f = -radius*math.pow(a*w_freq,3)*math.cos(a*w_freq*t+delta_lissajous)
+    # dddy_f = -radius*math.pow(b*w_freq,3)*math.cos(b*w_freq*t)
+    # ddddx_f = radius*math.pow(a*w_freq,4)*math.sin(a*w_freq*t+delta_lissajous)
+    # ddddy_f = radius*math.pow(b*w_freq,4)*math.sin(b*w_freq*t)
 
 
     e1=np.array([1,0,0]) # e3 elementary vector
@@ -635,7 +635,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
 
 
 # Run forward simulation from the specified initial condition
-duration =15.
+duration =8.
 
 input_log, state_log = \
     RunSimulation(robobee_plantBS,
