@@ -20,20 +20,22 @@ from pydrake.common import FindResourceOrThrow
 # This class takes as input the physical description
 # of the system, in terms of the center of mass intertia matrix, and gravity
 
-class RobobeePlantBS(VectorSystem):
+class RobobeePlantBSTorque(VectorSystem):
     def __init__(self, m = 1., Ixx = 1., 
-                       Iyy = 2., Izz = 3., g = 10.,
+                       Iyy = 2., Izz = 3., g = 10., rw_l = 1, bw=1,
                         input_max = 10.):
         VectorSystem.__init__(self,
             4,                           # One input (torque at reaction wheel).
-            15)                           # Four outputs (theta, phi, dtheta, dphi)
-        self._DeclareContinuousState(15)  # Four states (theta, phi, dtheta, dphi).
+            18)                           # Four outputs (theta, phi, dtheta, dphi)
+        self._DeclareContinuousState(18)  # Four states (theta, phi, dtheta, dphi).
 
         self.m = float(m)
         self.Ixx = float(Ixx)
         self.Iyy = float(Iyy)
         self.Izz = float(Izz)
         self.g = float(g)
+        self.rw_l = float(rw_l)
+        self.bw = float(bw)
         self.input_max = float(input_max)
 
         # Go ahead and calculate rotational inertias.
@@ -57,6 +59,7 @@ class RobobeePlantBS(VectorSystem):
         q2= q[5]
         q3= q[6]
         xi1 = q[7]
+        
 
         vx= qd[0]   # CoM velocity in inertial frame
         vy= qd[1]
@@ -65,14 +68,17 @@ class RobobeePlantBS(VectorSystem):
         wy= qd[4]
         wz= qd[5]
         xi2=qd[6]
+        xi30 = qd[7]
+        xi31 = qd[8]
+        xi32 = qd[9]
 
         # Stack up the state q
-        x = np.hstack([q, qd])
+        x = np.array([q, qd])
         # print("x:",x)
-        qv = np.vstack([q1,q2,q3])
+        qv = np.array([q1,q2,q3])
         r = np.array([x,y,z])
         # print("qv",qv.shape)
-        v = np.vstack([vx,vy,vz])
+        v = np.array([vx,vy,vz])
         quat_vec = np.vstack([q0,q1,q2,q3])
         # print("quat_vec",quat_vec.shape)
         w =np.array([wx,wy,wz])
@@ -86,6 +92,7 @@ class RobobeePlantBS(VectorSystem):
         
         # Translation from w to \dot{q}
         Eq = np.zeros((3,4))
+        w_hat = np.zeros((3,4))
 
 
         # Eq for body frame
@@ -113,8 +120,47 @@ class RobobeePlantBS(VectorSystem):
         I_inv = np.linalg.inv(I);
         Iw = np.dot(I,w)
         wIw = np.cross(w.T,Iw.T).T
+        
+        # Aerodynamic drag and parameters
+        e1 = np.zeros(3);
+        e1[0]=1;
+        e3 = np.zeros(3);
+        e3[2]=1;
+        r_w = self.rw_l*e3;
+        wr_w = np.cross(w,r_w) # w x r
+        fdw = -self.bw*(v+np.dot(Rq,wr_w))
+        # print("fdw: ", np.shape(v))
+        
+        RqTfdw=np.dot(Rq.T,fdw)
+        taudw = np.cross(r_w,RqTfdw)
+        # print("fdw: ", fdw)
+        # print("w: ", w)
+        # print("Rq.Twr_w :", np.dot(Rq.T,fdw))
 
-        return (Rq, Eq, wIw, I_inv)
+        # print("Rqwr_w :", np.dot(Rq,fdw))
+        
+        taudw_b = -self.bw*(np.dot(Rq.T,v)+np.cross(w,r_w))
+        taudw_b = np.cross(r_w,taudw_b)
+        # print("taudw - taudw_b", taudw-taudw_b)
+        
+        vd =  np.dot((Rq*q[7]-self.g*np.eye(3)),e3) + fdw/self.m # \dot{v} = -ge3 +R(q)e3 u[0] : u[0] Thrust is a unit of acceleration
+        wd = -np.dot(I_inv,wIw)+np.dot(I_inv,qd[7:10]) + np.dot(I_inv, taudw)
+        # kd = 1.5*1e-1
+        # wd = -np.dot(I_inv,wIw)+np.dot(I_inv,-kd*w) + np.dot(I_inv, taudw)
+    
+        # print("taudw: ", np.dot(Rq.T,fdw.T))
+        w_hat = np.zeros((3,3))
+        w_hat[0,:] = np.array([     0,   -w[2],     w[1] ])
+        w_hat[1,:] = np.array([  w[2],       0,    -w[0] ])
+        w_hat[2,:] = np.array([ -w[1],    w[0],        0 ])
+
+        # wrw_byhat = np.dot(w_hat,r_w)
+
+        # print("wr_w - wrw_byhat", wr_w - wrw_byhat)
+
+           
+
+        return (Rq, Eq, wIw, I_inv, fdw, taudw, vd, wd)
 
     # This helper uses the manipulator dynamics to evaluate
     # \dot{x} = f(x, u). It's just a thin wrapper around
@@ -132,13 +178,13 @@ class RobobeePlantBS(VectorSystem):
 
         # Use the manipulator equation to get qdd.
         qq = x[0:8]
-        qqd = x[8:15]
+        qqd = x[8:18]
         wx= qqd[3]   # Body velocity in "body frame"
         wy= qqd[4]
         wz= qqd[5]
         w =np.array([wx,wy,wz])
         
-        (Rq, Eq, wIw, I_inv) = self.GetManipulatorDynamics(qq, qqd)
+        (Rq, Eq, wIw, I_inv, fdw, taudw, vd, wd) = self.GetManipulatorDynamics(qq, qqd)
         
         e3 = np.array([0,0,1])
         # print("e3,", e3.shape)
@@ -149,9 +195,13 @@ class RobobeePlantBS(VectorSystem):
         rd = qqd[0:3] # np.vstack([qd[0],qd[1],qd[2]]); 
         qd = np.dot(Eq.T,qqd[3:6])/2.   # \dot{quat}=1/2*E(q)^Tw
         xi1d = qqd[6]
-        vd = np.dot((Rq*qq[7]-self.g*np.eye(3)),e3) # \dot{v} = -ge3 +R(q)e3 u[0] : u[0] Thrust is a unit of acceleration
-        wd = -np.dot(I_inv,wIw)+np.dot(I_inv,u[1:4])
+        # vd = np.dot((Rq*qq[7]-self.g*np.eye(3)),e3) + fdw/self.m # \dot{v} = -ge3 +R(q)e3 u[0] : u[0] Thrust is a unit of acceleration
+        # wd = -np.dot(I_inv,wIw)+np.dot(I_inv,qqd[7:10]) + np.dot(I_inv, taudw)
         xi2d = u[0]
+        xi30d = u[1]
+        xi31d = u[2]
+        xi32d = u[3]
+        
         # print("Rq", Rq.shape, "u", u.shape)
         # print("rd",rd.shape, "qd", qd.shape, "vd", vd.shape, "wd",wd.shape)
 
@@ -160,41 +210,21 @@ class RobobeePlantBS(VectorSystem):
         # print("qd:",qd)
         # print("vd:", vd)
         # print("w:",qqd[3:6])
+        # print("w shape:", np.shape(taudw))
+        # print("I_inv:",I_inv)
+        # print("w:",w)
+        # print("v:",v)
+        # print("rw:",rw)
+        # print("Vw:",Vw)
+        # print("fdw_b:",fdw_b)
+        # print("fdw:", fdw/self.m)
+        # print("taudw:", np.dot(I_inv, taudw))
+        # print("taud_w:",taud_w)
+        # print("u:",u)
+        # # wd_tot = wd+taud_w
+        # # vd_tot = vd+fdw/self.m
 
-        wd_tot = wd;
-        vd_tot = vd;
-        # Drag force from "Rotating the heading angle of underactuated flapping-wing flyers y wriggle-steering" S.Fuller IROS 2015
-        
-
-        bw =2.0*1e2  # 2.0 x 10-4 Nsm^{-1} (kg/s) mg scale ---> 10^6
-        bw = bw*0.2
-        rw = np.array([0, 0, 9.0*1e-3]) # 9 x 10-3 m
-        v = rd;
-        w_hat = np.zeros((3,3))
-        w_hat[0,:] = np.array([     0,   -w[2],     w[1] ])
-        w_hat[1,:] = np.array([  w[2],       0,    -w[0] ])
-        w_hat[2,:] = np.array([ -w[1],    w[0],        0 ])
-
-
-        Vw = -np.matmul(Rq,np.cross(w.T,rw.T))+v;
-        fdw = -bw*Vw;
-        fdw_b = np.dot(Rq.T,fdw);
-        taud = np.cross(rw.T,fdw_b.T)
-        taud_w = np.dot(I_inv,taud)
-        print("I_inv:",I_inv)
-        print("w:",w)
-        print("v:",v)
-        print("rw:",rw)
-        print("Vw:",Vw)
-        print("fdw_b:",fdw_b)
-        print("fdw:", fdw)
-        print("taud:",taud)
-        print("taud_w:",taud_w)
-        print("u:",u)
-        # wd_tot = wd+taud_w
-        # vd_tot = vd+fdw/self.m
-
-        return np.hstack([rd, qd, xi1d, vd_tot, wd_tot, xi2d])
+        return np.hstack([rd, qd, xi1d, vd, wd, xi2d, xi30d, xi31d, xi32d])
 
 
     # This method calculates the time derivative of the state,
@@ -329,7 +359,7 @@ class RobobeeController(VectorSystem):
 
     def __init__(self, feedback_rule):
         VectorSystem.__init__(self,
-            15,                           # Four inputs: full state inertial wheel pendulum..
+            18,                           # Four inputs: full state inertial wheel pendulum..
             4)                           # One output (torque for reaction wheel).
         self.feedback_rule = feedback_rule
 
@@ -358,7 +388,7 @@ class RigidBodySelection(VectorSystem):
 
     def __init__(self):
         VectorSystem.__init__(self,
-            15,                           # Four inputs: full state inertial wheel pendulum..
+            18,                           # Four inputs: full state inertial wheel pendulum..
             13)                           # One output (torque for reaction wheel).
         
     # This method calculates the output of the system from the
@@ -368,7 +398,7 @@ class RigidBodySelection(VectorSystem):
         # state of the plant
         y[:] = np.hstack([u[0:7],u[8:14]])
 
-def RunSimulation(robobee_plantBS, control_law, x0=np.random.random((15, 1)), duration=30):
+def RunSimulation(robobee_plantBS_torque, control_law, x0=np.random.random((15, 1)), duration=30):
     robobee_controller = RobobeeController(control_law)
 
     # Create a simple block diagram containing the plant in feedback
@@ -376,13 +406,15 @@ def RunSimulation(robobee_plantBS, control_law, x0=np.random.random((15, 1)), du
     builder = DiagramBuilder()
     # The last pendulum plant we made is now owned by a deleted
     # system, so easiest path is for us to make a new one.
-    plant = builder.AddSystem(RobobeePlantBS(
-        m = robobee_plantBS.m,
-        Ixx = robobee_plantBS.Ixx, 
-        Iyy = robobee_plantBS.Iyy, 
-        Izz = robobee_plantBS.Izz, 
-        g = robobee_plantBS.g, 
-        input_max = robobee_plantBS.input_max))
+    plant = builder.AddSystem(RobobeePlantBSTorque(
+        m = robobee_plantBS_torque.m,
+        Ixx = robobee_plantBS_torque.Ixx, 
+        Iyy = robobee_plantBS_torque.Iyy, 
+        Izz = robobee_plantBS_torque.Izz, 
+        g = robobee_plantBS_torque.g, 
+        rw_l = robobee_plantBS_torque.rw_l, 
+        bw = robobee_plantBS_torque.bw, 
+        input_max = robobee_plantBS_torque.input_max))
 
     Rigidbody_selector = builder.AddSystem(RigidBodySelection())
 
@@ -398,7 +430,7 @@ def RunSimulation(robobee_plantBS, control_law, x0=np.random.random((15, 1)), du
     input_log._DeclarePeriodicPublish(0.033333, 0.0)
     builder.Connect(controller.get_output_port(0), input_log.get_input_port(0))
 
-    state_log = builder.AddSystem(SignalLogger(15))
+    state_log = builder.AddSystem(SignalLogger(18))
     state_log._DeclarePeriodicPublish(0.033333, 0.0)
     builder.Connect(plant.get_output_port(0), state_log.get_input_port(0))
     
@@ -431,7 +463,7 @@ def RunSimulation(robobee_plantBS, control_law, x0=np.random.random((15, 1)), du
 
     simulator.set_target_realtime_rate(1)
     simulator.get_integrator().set_fixed_step_mode(True)
-    simulator.get_integrator().set_maximum_step_size(0.05)
+    simulator.get_integrator().set_maximum_step_size(0.0002)
 
     # Simulate for the requested duration.
     simulator.StepTo(duration)

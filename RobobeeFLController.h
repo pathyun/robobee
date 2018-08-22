@@ -151,11 +151,12 @@ class RobobeeFLController : public systems::LeafSystem<T> {
 
     const drake::math::RotationMatrix<T> Rq(quat);
     
+    // Correct Eq in body frame 08/13/2018 (Be careful)
     MatrixX<T> Eq = Eigen::MatrixXd::Zero(3,4);
 
-    Eq.block(0,0,1,4) =  Eigen::Vector4d(-1*q1,  q0, -1*q3,  q2).transpose();
-    Eq.block(1,0,1,4) << Eigen::Vector4d(-1*q2,  q3,  q0, -1*q1).transpose();
-    Eq.block(2,0,1,4) << Eigen::Vector4d(-1*q3, -1*q2,  q1,  q0).transpose();
+    Eq.block(0,0,1,4) =  Eigen::Vector4d(-1*q1,     q0,   1*q3,  -1*q2).transpose();
+    Eq.block(1,0,1,4) << Eigen::Vector4d(-1*q2,  -1*q3,     q0,   1*q1).transpose();
+    Eq.block(2,0,1,4) << Eigen::Vector4d(-1*q3,   1*q2,  -1*q1,     q0).transpose();
 
     const Vector3<T> wIw = w.cross(I_ * w);            // Expressed in B
     
@@ -197,6 +198,12 @@ class RobobeeFLController : public systems::LeafSystem<T> {
     w_hat.block(1,0,1,3) = Eigen::Vector3d( w(2),     0, -w(0)).transpose();
     w_hat.block(2,0,1,3) = Eigen::Vector3d(-w(1),  w(0),     0).transpose();
 
+    Vector3<T> Rw = Eigen::Vector3d::Zero();
+    Matrix3<T> Rw_hat = Eigen::Matrix3d::Zero();
+    Rw = Rq.matrix()*w;
+    Rw_hat.block(0,0,1,3) = Eigen::Vector3d(     0,   -Rw(2),     Rw(1) );
+    Rw_hat.block(1,0,1,3) = Eigen::Vector3d(  Rw(2),       0,    -Rw(0) );
+    Rw_hat.block(2,0,1,3) = Eigen::Vector3d( -Rw(1),    Rw(0),        0 );
 
     // #- Checking the derivation
     // cout << "\n Rq : \n"<< Rq.matrix() << "\n";
@@ -241,7 +248,11 @@ class RobobeeFLController : public systems::LeafSystem<T> {
     Vector3<T> eta6_temp = Eigen::Vector3d::Zero(); // eta6_temp = (ye2T-xe1T)/(x^2+y^2)
     eta6_temp = (Rqe1_y*e2.transpose()-Rqe1_x*e1.transpose())/x2y2;  
     // print("eta6_temp:", eta6_temp)
-    eta6 = eta6_temp.dot(-Rqe1_hat*w) -dy4;
+     // Body frame w  ( multiply R)
+    eta6 = eta6_temp.dot(-Rqe1_hat*Rw)-dy4;
+
+    // World frame w
+    // eta6 = eta6_temp.dot(-Rqe1_hat*w) -dy4;
     // print("Rqe1_hat:", Rqe1_hat)
 
     // # Second derivative of first three output
@@ -255,7 +266,11 @@ class RobobeeFLController : public systems::LeafSystem<T> {
     // # Third derivative of first three output
     T dddy1, dddy2, dddy3;
     Vector3<T> eta4 = Eigen::Vector3d::Zero(); 
-    eta4 = Rqe3*xi2+F1q*Eq.transpose()*w*xi1 - Eigen::Vector3d(dddx_f,dddy_f,0);
+
+    // # Body frame w ( multiply R)
+    eta4 = Rqe3*xi2+(-Rqe3_hat*Rw)*xi1 - Eigen::Vector3d(dddx_f,dddy_f,0);
+    // # World frame w 
+    // eta4 = Rqe3*xi2+F1q*Eq.transpose()*w*xi1 - Eigen::Vector3d(dddx_f,dddy_f,0);
     dddy1 = eta4(0);
     dddy2 = eta4(1);
     dddy3 = eta4(2);
@@ -264,32 +279,53 @@ class RobobeeFLController : public systems::LeafSystem<T> {
     Vector3<T> B_qw_temp = Eigen::Vector3d::Zero();
     Vector3<T> B_qw = Eigen::Vector3d::Zero();
     
-    B_qw_temp = xi1*(-w_hat*Rqe3_hat*w+Rqe3_hat*I_inv*wIw); // # np.dot(I_inv,wIw)*xi1-2*w*xi2
-    B_qw      = B_qw_temp+xi2*(-2*Rqe3_hat*w) - Eigen::Vector3d(ddddx_f,ddddy_f,0); //   #np.dot(Rqe3_hat,B_qw_temp)
+    // # Body frame w 
+    B_qw_temp = xi1*(-Rw_hat*Rqe3_hat*Rw+Rqe3_hat*Rq.matrix()*I_inv*wIw); //# np.dot(I_inv,wIw)*xi1-2*w*xi2
+    B_qw      = B_qw_temp+xi2*(-2*Rqe3_hat*Rw) - Eigen::Vector3d(ddddx_f,ddddy_f,0); //   #np.dot(Rqe3_hat,B_qw_temp)
+
+    // # World frame w
+    // B_qw_temp = xi1*(-w_hat*Rqe3_hat*w+Rqe3_hat*I_inv*wIw); // # np.dot(I_inv,wIw)*xi1-2*w*xi2
+    // B_qw      = B_qw_temp+xi2*(-2*Rqe3_hat*w) - Eigen::Vector3d(ddddx_f,ddddy_f,0); //   #np.dot(Rqe3_hat,B_qw_temp)
 
     // # Second derivative of yaw output
     T dRqe1_x, dRqe1_y, alpha1, B_yaw;
-
-    dRqe1_x = e2.dot(-Rqe1_hat*w); // # \dot{x}
-    dRqe1_y = e1.dot(-Rqe1_hat*w); // # \dot{y}
+    // # Body frame w
+    dRqe1_x = e2.dot(-Rqe1_hat*Rw); 
+    dRqe1_y = e1.dot(-Rqe1_hat*Rw); 
+    // # World frame w
+    // dRqe1_x = e2.dot(-Rqe1_hat*w); // # \dot{x}
+    // dRqe1_y = e1.dot(-Rqe1_hat*w); // # \dot{y}
 
     alpha1 = 2*(Rqe1_x*dRqe1_x+Rqe1_y*dRqe1_y)/x2y2; //# (2xdx +2ydy)/(x^2+y^2)
     // # alpha2 = math.pow(dRqe1_y,2)-math.pow(dRqe1_x,2)
 
     Vector3<T> B_yaw_temp3 = Eigen::Vector3d::Zero();
     
-    B_yaw_temp3 = alpha1*Rqe1_hat*w+Rqe1_hat*I_inv*wIw-w_hat*Rqe1_hat*w;
+    // Body frame w
+    B_yaw_temp3 = alpha1*Rqe1_hat*Rw+Rqe1_hat*Rq.matrix()*I_inv*wIw-Rw_hat*Rqe1_hat*Rw;
+
+    // World frame w
+
+    // B_yaw_temp3 = alpha1*Rqe1_hat*w+Rqe1_hat*I_inv*wIw-w_hat*Rqe1_hat*w;
 
     B_yaw = eta6_temp.dot(B_yaw_temp3); // # +alpha2 :Could be an error in math.
 
     Vector3<T> g_yaw = Eigen::Vector3d::Zero();
-    g_yaw = -eta6_temp.transpose()*Rqe1_hat*I_inv;
+    // Body frame w
+    g_yaw = -eta6_temp.transpose()*Rqe1_hat*Rq.matrix()*I_inv;
+
+    // World frame w
+    // g_yaw = -eta6_temp.transpose()*Rqe1_hat*I_inv;
 
     // print("g_yaw:", g_yaw)
     // # Decoupling matrix A(x)\in\mathbb{R}^4
     MatrixX<T> A_fl = Eigen::MatrixXd::Zero(4,4);
     A_fl.block(0,0,3,1) = Rqe3;
-    A_fl.block(0,1,3,3) = -Rqe3_hat*I_inv*xi1;
+    // Body frame w
+    A_fl.block(0,1,3,3) = -Rqe3_hat*Rq.matrix()*I_inv*xi1;
+    // World frame w 
+    // A_fl.block(0,1,3,3) = -Rqe3_hat*I_inv*xi1;
+    
     A_fl.block(3,1,1,3) = g_yaw.transpose();
 
     T A_fl_det;

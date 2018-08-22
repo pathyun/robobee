@@ -77,9 +77,9 @@ q0[1:4]=math.sin(theta0/2)*v0_q.T/v0_norm
 xi10 = g;
 v0 = np.zeros((3))
 w0 = np.zeros((3))          # angular velocity
-w0[0]=-1 # 0.1 #0;
+w0[0]=-0.1 # 0.1 #0;
 w0[1]=0 # 0  #-0.1;
-w0[2]=1 # 0.1 # 0.2;
+w0[2]=0.1 # 0.1 # 0.2;
 
 xi20 =0;
 #-[0-1] Stack up the state in R^13
@@ -406,7 +406,11 @@ def test_Feedback_Linearization_controller_BS(x,t):
     w_hat[1,:] = np.array([  w[2],       0,    -w[0] ])
     w_hat[2,:] = np.array([ -w[1],    w[0],        0 ])
 
-
+    Rw = np.dot(Rq,w);
+    Rw_hat = np.zeros((3,3))
+    Rw_hat[0,:] = np.array([     0,   -Rw[2],     Rw[1] ])
+    Rw_hat[1,:] = np.array([  Rw[2],       0,    -Rw[0] ])
+    Rw_hat[2,:] = np.array([ -Rw[1],    Rw[0],        0 ])
     #- Checking the derivation
 
     # print("F1qEqT-(-Rqe3_hat)",np.dot(F1q,Eq.T)-(-Rqe3_hat))
@@ -442,7 +446,11 @@ def test_Feedback_Linearization_controller_BS(x,t):
     eta6_temp = np.zeros(3)     #eta6_temp = (ye2T-xe1T)/(x^2+y^2)
     eta6_temp = (Rqe1_y*e2.T-Rqe1_x*e1.T)/x2y2    
     # print("eta6_temp:", eta6_temp)
-    eta6 = np.dot(eta6_temp,np.dot(-Rqe1_hat,w))
+    # Body frame w  ( multiply R)
+    eta6 = np.dot(eta6_temp,np.dot(-Rqe1_hat,np.dot(Rq,w)))
+
+    # World frame w
+    # eta6 = np.dot(eta6_temp,np.dot(-Rqe1_hat,w))
     # print("Rqe1_hat:", Rqe1_hat)
 
     # Second derivative of first three output
@@ -454,39 +462,67 @@ def test_Feedback_Linearization_controller_BS(x,t):
 
     # Third derivative of first three output
     eta4 = np.zeros(3)
-    eta4 = Rqe3*xi2+np.dot(np.dot(F1q,Eq.T),w)*xi1 - np.array([dddx_f,dddy_f,0])
+    # Body frame w ( multiply R)
+    eta4 = Rqe3*xi2+np.dot(-Rqe3_hat,np.dot(Rq,w))*xi1 - np.array([dddx_f,dddy_f,0])
+
+    # World frame w 
+    # eta4 = Rqe3*xi2+np.dot(np.dot(F1q,Eq.T),w)*xi1 - np.array([dddx_f,dddy_f,0])
     dddy1 = eta4[0]
     dddy2 = eta4[1]
     dddy3 = eta4[2]
 
     # Fourth derivative of first three output
     B_qw_temp = np.zeros(3)
-    B_qw_temp = xi1*(-np.dot(w_hat,np.dot(Rqe3_hat,w))+np.dot(Rqe3_hat,np.dot(I_inv,wIw))) # np.dot(I_inv,wIw)*xi1-2*w*xi2
-    B_qw      = B_qw_temp+xi2*(-2*np.dot(Rqe3_hat,w)) - np.array([ddddx_f,ddddy_f,0])   #np.dot(Rqe3_hat,B_qw_temp)
+    # Body frame w 
+    B_qw_temp = xi1*(-np.dot(Rw_hat,np.dot(Rqe3_hat,Rw))+np.dot(Rqe3_hat,np.dot(Rq,np.dot(I_inv,wIw))) ) # np.dot(I_inv,wIw)*xi1-2*w*xi2
+    B_qw      = B_qw_temp+xi2*(-2*np.dot(Rqe3_hat,Rw)) - np.array([ddddx_f,ddddy_f,0])   #np.dot(Rqe3_hat,B_qw_temp)
+
+    # World frame w
+    # B_qw_temp = xi1*(-np.dot(w_hat,np.dot(Rqe3_hat,w))+np.dot(Rqe3_hat,np.dot(I_inv,wIw))) # np.dot(I_inv,wIw)*xi1-2*w*xi2
+    # B_qw      = B_qw_temp+xi2*(-2*np.dot(Rqe3_hat,w)) - np.array([ddddx_f,ddddy_f,0])   #np.dot(Rqe3_hat,B_qw_temp)
 
     # B_qw = B_qw_temp - np.dot(w_hat,np.dot(Rqe3_hat,w))*xi1
 
     # Second derivative of yaw output
 
-    dRqe1_x = np.dot(e2,np.dot(-Rqe1_hat,w)) # \dot{x}
-    dRqe1_y = np.dot(e1,np.dot(-Rqe1_hat,w)) # \dot{y}
-
+    # Body frame w
+    dRqe1_x = np.dot(e2,np.dot(-Rqe1_hat,Rw)) # \dot{x}
+    dRqe1_y = np.dot(e1,np.dot(-Rqe1_hat,Rw)) # \dot{y}
     alpha1 = 2*(Rqe1_x*dRqe1_x+Rqe1_y*dRqe1_y)/x2y2 # (2xdx +2ydy)/(x^2+y^2)
-    # alpha2 = math.pow(dRqe1_y,2)-math.pow(dRqe1_x,2)
+    
+    # World frame w
+    # dRqe1_x = np.dot(e2,np.dot(-Rqe1_hat,w)) # \dot{x}
+    # dRqe1_y = np.dot(e1,np.dot(-Rqe1_hat,w)) # \dot{y}
+
+    # alpha1 = 2*(Rqe1_x*dRqe1_x+Rqe1_y*dRqe1_y)/x2y2 # (2xdx +2ydy)/(x^2+y^2)
+    # # alpha2 = math.pow(dRqe1_y,2)-math.pow(dRqe1_x,2)
+
+    # Body frame w
 
     B_yaw_temp3 =np.zeros(3)
-    B_yaw_temp3 = alpha1*np.dot(Rqe1_hat,w)+np.dot(Rqe1_hat,np.dot(I_inv,wIw))-np.dot(w_hat,np.dot(Rqe1_hat,w))
+    B_yaw_temp3 = alpha1*np.dot(Rqe1_hat,Rw)+np.dot(Rqe1_hat,np.dot(Rq,np.dot(I_inv,wIw)))-np.dot(Rw_hat,np.dot(Rqe1_hat,Rw))
 
     B_yaw = np.dot(eta6_temp,B_yaw_temp3) # +alpha2 :Could be an error in math.
     g_yaw = np.zeros(3)
-    g_yaw = -np.dot(eta6_temp,np.dot(Rqe1_hat,I_inv))
+    g_yaw = -np.dot(eta6_temp,np.dot(Rqe1_hat,np.dot(Rq,I_inv)))
+
+    # World frame w
+    # B_yaw_temp3 =np.zeros(3)
+    # B_yaw_temp3 = alpha1*np.dot(Rqe1_hat,w)+np.dot(Rqe1_hat,np.dot(I_inv,wIw))-np.dot(w_hat,np.dot(Rqe1_hat,w))
+
+    # B_yaw = np.dot(eta6_temp,B_yaw_temp3) # +alpha2 :Could be an error in math.
+    # g_yaw = np.zeros(3)
+    # g_yaw = -np.dot(eta6_temp,np.dot(Rqe1_hat,I_inv))
 
     # print("g_yaw:", g_yaw)
     # Decoupling matrix A(x)\in\mathbb{R}^4
 
     A_fl = np.zeros((4,4))
     A_fl[0:3,0] = Rqe3
-    A_fl[0:3,1:4] = -np.dot(Rqe3_hat,I_inv)*xi1
+    # Body frame w
+    A_fl[0:3,1:4] = -np.dot(Rqe3_hat,np.dot(Rq,I_inv))*xi1
+    # World frame w
+    # A_fl[0:3,1:4] = -np.dot(Rqe3_hat,I_inv)*xi1
     A_fl[3,1:4]=g_yaw
 
     A_fl_inv = np.linalg.inv(A_fl)

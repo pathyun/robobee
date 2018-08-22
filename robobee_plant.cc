@@ -119,7 +119,7 @@ void RobobeePlant<T>::DoCalcTimeDerivatives(
 
   // Convert to Eigen quaternion
   Vector4<T> quat_vector = state.template segment<4>(3);
-  Vector4<T> quat_original_vector = state.template segment<4>(3);
+  
   T temp = quat_vector(3);
   quat_vector(3)=quat_vector(0);
   quat_vector(0)=quat_vector(1);
@@ -146,23 +146,26 @@ void RobobeePlant<T>::DoCalcTimeDerivatives(
   //const Vector3<T> w_BN_B = rpy.CalcAngularVelocityInChildFromRpyDt(rpyDt);
   const Vector4<T> quatDt = drake::math::CalculateQuaternionDtFromAngularVelocityExpressedInB(quat, w_BN_B);
 
-  MatrixX<T> Eq = Eigen::MatrixXd::Zero(3,4);
+// Checking the quaternion and angular velocity (World vs Body)
+  // MatrixX<T> Eq = Eigen::MatrixXd::Zero(3,4);
+  // Vector4<T> quat_original_vector = state.template segment<4>(3);
+  // T q0, q1, q2, q3;
+  // q0=quat_original_vector(0);
+  // q1=quat_original_vector(1);
+  // q2=quat_original_vector(2);
+  // q3=quat_original_vector(3);
 
-  T q0, q1, q2, q3;
-  q0=quat_original_vector(0);
-  q1=quat_original_vector(1);
-  q2=quat_original_vector(2);
-  q3=quat_original_vector(3);
-
-  Eq.block(0,0,1,4) <<  -1*q1,   q0, 1*q3,   -1*q2;
-  Eq.block(1,0,1,4) << -1*q2,  -1*q3,    q0,  1*q1;
-  Eq.block(2,0,1,4) << -1*q3, 1*q2,  -1*q1,     q0;
+  // Eq.block(0,0,1,4) <<  -1*q1,    q0,   1*q3,   -1*q2;
+  // Eq.block(1,0,1,4) << -1*q2,  -1*q3,     q0,  1*q1;
+  // Eq.block(2,0,1,4) << -1*q3,   1*q2,  -1*q1,     q0;
   
-  Vector4<T> quatDt_error;
+  // Vector4<T> quatDt_error;
   
-  quatDt_error = quatDt - 1/2.*Eq.transpose()*w_BN_B; 
+  // quatDt_error = quatDt - 1/2.*Eq.transpose()*w_BN_B; 
 
-  std::cout << "\n qdot error due to missmatch Eq : \n" << quatDt_error<<"\n";
+  // std::cout << "\n qdot error due to missmatch Eq : \n" << quatDt_error<<"\n";
+
+  
   // To compute α (B's angular acceleration in N) due to the net moment 𝛕 on B,
   // rearrange Euler rigid body equation  𝛕 = I α + ω × (I ω)  and solve for α.
 

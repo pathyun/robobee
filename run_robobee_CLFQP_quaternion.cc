@@ -262,7 +262,7 @@ int do_main() {
     simulator.Initialize();
     simulator.set_target_realtime_rate(FLAGS_simulation_real_time_rate);
     simulator.get_mutable_integrator()->set_fixed_step_mode(true);
-    simulator.get_mutable_integrator()->set_maximum_step_size(0.05);
+    simulator.get_mutable_integrator()->set_maximum_step_size(0.005);
     simulator.StepTo(FLAGS_trial_duration);
 
   return 0;
