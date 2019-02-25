@@ -462,7 +462,7 @@ class RobobeeCLFQPController : public systems::LeafSystem<T> {
     // # CLF_QP_cost_u = np.dot(u_var,u_var)
     // phi1 = np.dot(phi1_decouple,u_var)
     // auto quadratic_cost = symbolic::Expression(u_var[0]);
-
+    
     prog.AddQuadraticCost(Quadratic_Positive_def, c_QP, u_var);
     prog.AddLinearConstraint(phi1_decouple.transpose(), -1e32, -phi0_exp, u_var);
 

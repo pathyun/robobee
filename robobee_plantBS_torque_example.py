@@ -127,7 +127,7 @@ class RobobeePlantBSTorque(VectorSystem):
         e3 = np.zeros(3);
         e3[2]=1;
         r_w = self.rw_l*e3;
-        wr_w = np.cross(w,r_w) # w x r
+        wr_w = np.cross(w.T,r_w) # w x r
         fdw = -self.bw*(v+np.dot(Rq,wr_w))
         # print("fdw: ", np.shape(v))
         
@@ -424,14 +424,18 @@ def RunSimulation(robobee_plantBS_torque, control_law, x0=np.random.random((15, 
     builder.Connect(controller.get_output_port(0), plant.get_input_port(0))
 
     # Create a logger to capture the simulation of our plant
+    set_time_interval = 0.001
+    time_interval_multiple = 1000;
+    publish_period = set_time_interval*time_interval_multiple
+
     print("2. Connecting plant to the logger\n")
     
     input_log = builder.AddSystem(SignalLogger(4))
-    input_log._DeclarePeriodicPublish(0.033333, 0.0)
+    # input_log._DeclarePeriodicPublish(publish_period, 0.0)
     builder.Connect(controller.get_output_port(0), input_log.get_input_port(0))
 
     state_log = builder.AddSystem(SignalLogger(18))
-    state_log._DeclarePeriodicPublish(0.033333, 0.0)
+    # state_log._DeclarePeriodicPublish(publish_period, 0.0)
     builder.Connect(plant.get_output_port(0), state_log.get_input_port(0))
     
     # Drake visualization
@@ -463,7 +467,7 @@ def RunSimulation(robobee_plantBS_torque, control_law, x0=np.random.random((15, 
 
     simulator.set_target_realtime_rate(1)
     simulator.get_integrator().set_fixed_step_mode(True)
-    simulator.get_integrator().set_maximum_step_size(0.0002)
+    simulator.get_integrator().set_maximum_step_size(set_time_interval)
 
     # Simulate for the requested duration.
     simulator.StepTo(duration)

@@ -195,6 +195,7 @@ print("Evalues: ", [min_e_Q, max_e_P])
 # Set up for QP problem
 prog = MathematicalProgram()
 u_var = prog.NewContinuousVariables(4, "u_var")
+c_var = prog.NewContinuousVariables(1, "c_var")
 solverid = prog.GetSolverId()
 
 tol = 1e-10
@@ -203,7 +204,7 @@ prog.SetSolverOption(mp.SolverType.kIpopt,"constr_viol_tol", tol);
 prog.SetSolverOption(mp.SolverType.kIpopt,"acceptable_tol", tol);
 prog.SetSolverOption(mp.SolverType.kIpopt,"acceptable_constr_viol_tol", tol);
 
-prog.SetSolverOption(mp.SolverType.kIpopt, "print_level", 2) # CAUTION: Assuming that solver used Ipopt
+prog.SetSolverOption(mp.SolverType.kIpopt, "print_level", 5) # CAUTION: Assuming that solver used Ipopt
 
 # #-[2] Linearization and get (K,S) for LQR
 
@@ -305,6 +306,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
     print("t:", t)
     prog = MathematicalProgram()
     u_var = prog.NewContinuousVariables(4, "u_var")
+    c_var = prog.NewContinuousVariables(1, "c_var")
     
     # # # Example 1 : Circle
 
@@ -553,7 +555,9 @@ def test_Feedback_Linearization_controller_BS(x,t):
 
     Vx = np.dot(eta, np.dot(Mout,eta) )
     # phi0_exp = L_FVx+np.dot(L_GVx,L_fhx_star)+(min_e_Q/max_e_P)*Vx*1    # exponentially stabilizing
-    phi0_exp = L_FVx+np.dot(L_GVx,L_fhx_star)+min_e_Q*eta_norm      # more exact bound - exponentially stabilizing
+    # phi0_exp = L_FVx+np.dot(L_GVx,L_fhx_star)+min_e_Q*eta_norm      # more exact bound - exponentially stabilizing
+    phi0_exp = L_FVx+np.dot(L_GVx,L_fhx_star)    # more exact bound - exponentially stabilizing
+    
     phi1_decouple = np.dot(L_GVx,A_fl)
     
     # # Solve QP
@@ -562,13 +566,15 @@ def test_Feedback_Linearization_controller_BS(x,t):
     QP_det = np.linalg.det(Quadratic_Positive_def)
     c_QP = 2*np.dot(L_fhx_star.T,A_fl)
     
+    c_QP_extned = np.hstack([c_QP, -1])
+    u_var_extended = np.hstack([u_var, c_var])
     
     # CLF_QP_cost_v = np.dot(v_var,v_var) // Exact quadratic cost
-    CLF_QP_cost_v_effective = np.dot(u_var, np.dot(Quadratic_Positive_def,u_var))+np.dot(c_QP,u_var) # Quadratic cost without constant term
+    CLF_QP_cost_v_effective = np.dot(u_var, np.dot(Quadratic_Positive_def,u_var))+np.dot(c_QP,u_var)-c_var[0] # Quadratic cost without constant term
     
     # CLF_QP_cost_u = np.dot(u_var,u_var)
     
-    phi1 = np.dot(phi1_decouple,u_var)
+    phi1 = np.dot(phi1_decouple,u_var)+c_var[0]*eta_norm 
 
     #----Printing intermediate states
 
@@ -584,10 +590,10 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # print("eta6", eta6)
     # print("d : ", phi1_decouple)
     # print("Cost expression:", CLF_QP_cost_v)
-    # print("Const expression:", phi0_exp+phi1)
+    #print("Const expression:", phi0_exp+phi1)
 
     #----Different solver option // Gurobi did not work with python at this point (some binding issue 8/8/2018)
-    # solver = IpoptSolver()
+    solver = IpoptSolver()
     # solver = GurobiSolver()
     # print solver.available()
     # assert(solver.available()==True)
@@ -613,7 +619,7 @@ def test_Feedback_Linearization_controller_BS(x,t):
     k = np.matmul(Bout.T,Mout)
     k = np.matmul(np.linalg.inv(R),k)
 
-    mu = -1/2*np.matmul(k,eta)
+    mu = -1/1*np.matmul(k,eta)
 
     v=-U_temp+mu
     
@@ -623,7 +629,9 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # Set up the QP problem
     prog.AddQuadraticCost(CLF_QP_cost_v_effective)
     prog.AddConstraint(phi0_exp+phi1<=0)
-
+    prog.AddConstraint(c_var[0]>=0)
+    prog.AddConstraint(c_var[0]<=100)
+    prog.AddConstraint(u_var[0]<=30)
     prog.SetSolverOption(mp.SolverType.kIpopt, "print_level", 5) # CAUTION: Assuming that solver used Ipopt
 
     print("CLF value:", Vx) # Current CLF value
@@ -634,7 +642,8 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # solver.Solve(prog)
     print("Optimal u : ", prog.GetSolution(u_var))
     U_CLF_QP = prog.GetSolution(u_var)
-
+    C_CLF_QP = prog.GetSolution(c_var)
+    
     #---- Printing for debugging
     # dx = robobee_plantBS.evaluate_f(U_fl,x)    
     # print("dx", dx)
@@ -647,14 +656,14 @@ def test_Feedback_Linearization_controller_BS(x,t):
     # deta6 = B_yaw+np.dot(g_yaw,U_fl_zero[1:4])
     # print("deta4:",deta4)
     # print("deta6:",deta6)
+    print(C_CLF_QP)
 
-
-    phi1_opt = np.dot(phi1_decouple, U_CLF_QP)
+    phi1_opt = np.dot(phi1_decouple, U_CLF_QP)+C_CLF_QP*eta_norm
     phi1_opt_FL = np.dot(phi1_decouple, U_fl)
 
     print("FL u: ", U_fl)
     print("CLF u:", U_CLF_QP)
-    print("Cost FL: ", np.dot(v,v))
+    print("Cost FL: ", np.dot(mu,mu))
 
     v_CLF = np.dot(A_fl,U_CLF_QP)+L_fhx_star
     print("Cost CLF: ", np.dot(v_CLF,v_CLF))

@@ -261,6 +261,44 @@ drake_cc_googletest(
     ],
 )
 
+py_binary(
+    name = "IEEETAC_robobee_drag_control_FL_tracking_CLFQP_adaptive",
+    srcs = ["IEEETAC_robobee_drag_control_FL_tracking_CLFQP_adaptive.py"],
+    data = glob(["**"]),
+    # #glob(["*.out"]),
+    # ["u1_alpha3_2to3.out",
+    # "u2_alpha3_2to3.out",
+    # "u3_alpha3_2to3.out",
+    # "u4_alpha3_2to3.out",
+    # "u1_alpha1_2to3.out",
+    # "u1_alpha10_2to3.out",
+    # "roll3_2to3.out",
+    # "pitch3_2to3.out",
+    # "yaw3_2to3.out",
+    # "xalpha1_2to3.out",
+    # "yalpha1_2to3.out",
+    # "xalpha10_2to3.out",
+    # "yalpha10_2to3.out",
+    # "xalpha5_2to3.out",
+    # "yalpha5_2to3.out",
+    # "xalpha3_2to3_modified.out",
+    # "yalpha3_2to3_modified.out",
+    # ],
+    deps = [
+        "//bindings/pydrake",
+        "//examples/robobee:robobee_plant_aero"
+    ],
+)
+py_binary(
+    name = "robobee_plant_aero",
+    srcs = ["robobee_plant_aero.py"],
+    data = [":robobee_arena.urdf",
+    ],
+    deps = [
+        "//bindings/pydrake",
+    ],
+)
+
 install_data()
 
 add_lint_tests()
